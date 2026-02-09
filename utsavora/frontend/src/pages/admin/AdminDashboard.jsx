@@ -6,7 +6,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get("/payments/admin/summary/")
+    api.get("/payments/admin/escrow/summary/")
       .then(res => {
         setStats(res.data);
       })
@@ -20,7 +20,7 @@ export default function AdminDashboard() {
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6 text-gray-800">Financial Overview</h1>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <StatCard 
           title="Total Volume" 
           value={`₹${stats.total_transaction_volume || 0}`} 
@@ -29,7 +29,7 @@ export default function AdminDashboard() {
         />
         <StatCard 
           title="Escrow Balance" 
-          value={`₹${stats.escrow_balance || 0}`} 
+          value={`₹${stats.total_escrow || 0}`} 
           color="bg-yellow-50 border-yellow-200"
           textColor="text-yellow-700"
         />
@@ -38,6 +38,12 @@ export default function AdminDashboard() {
           value={`₹${stats.platform_revenue || 0}`} 
           color="bg-green-50 border-green-200"
           textColor="text-green-700"
+        />
+        <StatCard 
+          title="Pending Payouts" 
+          value={stats.pending_payouts || 0} 
+          color="bg-purple-50 border-purple-200"
+          textColor="text-purple-700"
         />
       </div>
     </div>

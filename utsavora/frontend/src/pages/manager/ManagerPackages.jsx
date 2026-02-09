@@ -1,14 +1,13 @@
 import { useState, useEffect } from "react";
 import api from "../../services/api";
 import Loader from "../../components/common/Loader";
-import Message from "../../components/common/Message";
+import toast from "react-hot-toast";
 
 export default function ManagerPackages() {
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [currentPkg, setCurrentPkg] = useState(null); // null = create mode
-  const [message, setMessage] = useState(null);
 
   useEffect(() => {
       const fetchPackages = async () => {
@@ -18,6 +17,7 @@ export default function ManagerPackages() {
           setLoading(false);
         } catch (err) { // eslint-disable-line no-unused-vars
           setLoading(false);
+          toast.error("Failed to load packages");
         }
       };
       fetchPackages();
@@ -28,9 +28,9 @@ export default function ManagerPackages() {
     try {
       await api.delete(`/manager/packages/${id}/`);
       setPackages(packages.filter((p) => p.id !== id));
-      setMessage({ type: "success", text: "Package deleted." });
+      toast.success("Package deleted.");
     } catch (err) { // eslint-disable-line no-unused-vars
-       setMessage({ type: "error", text: "Failed to delete package." });
+       toast.error("Failed to delete package.");
     }
   };
 
@@ -44,17 +44,17 @@ export default function ManagerPackages() {
         // Update
         const res = await api.put(`/manager/packages/${currentPkg.id}/`, data);
         setPackages(packages.map(p => p.id === currentPkg.id ? res.data : p));
-        setMessage({ type: "success", text: "Package updated." });
+        toast.success("Package updated.");
       } else {
         // Create
         const res = await api.post("/manager/packages/", data);
         setPackages([...packages, res.data]);
-        setMessage({ type: "success", text: "Package created." });
+        toast.success("Package created.");
       }
       setShowModal(false);
       setCurrentPkg(null);
     } catch (err) { // eslint-disable-line no-unused-vars
-      setMessage({ type: "error", text: "Failed to save package." });
+      toast.error("Failed to save package.");
     }
   };
 
@@ -71,8 +71,6 @@ export default function ManagerPackages() {
           Add New Package
         </button>
       </div>
-
-      {message && <Message type={message.type} text={message.text} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {packages.map((pkg) => (

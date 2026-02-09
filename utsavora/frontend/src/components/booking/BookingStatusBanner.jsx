@@ -28,9 +28,7 @@ export default function BookingStatusBanner({ booking }) {
             <p className="font-semibold">Event Scheduled</p>
             <p className="text-sm">You're all set!</p>
           </div>
-          <button className="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">
-            Download Invite
-          </button>
+
         </div>
       );
 

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import api from "../../services/api";
-import PayAdvanceButton from "../../components/payment/PayAdvanceButton";
+import Loader from "../../components/common/Loader";
+import EmptyState from "../../components/common/EmptyState";
+import toast from "react-hot-toast";
 
 export default function UserBookings() {
   const [bookings, setBookings] = useState([]);
@@ -8,69 +10,102 @@ export default function UserBookings() {
 
   useEffect(() => {
     api.get("/bookings/list/")
-      .then(res => setBookings(res.data))
-      .catch(err => console.error("Failed to fetch bookings", err))
+      .then((res) => setBookings(res.data))
+      .catch((err) => {
+        console.error(err);
+        toast.error("Failed to load bookings");
+      })
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="p-8 text-center text-gray-500">Loading your bookings...</div>;
-
-  return (
-    <div className="max-w-4xl mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6 text-gray-800">My Bookings</h1>
+  const startPayment = async (bookingId) => {
+    try {
+      // 1. Create Order
+      const res = await api.post("/payments/create-order/", { booking_id: bookingId });
       
-      <div className="space-y-4">
-        {bookings.map(booking => (
-          <div key={booking.id} className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center">
-            
-            <div className="mb-4 md:mb-0">
-              <h3 className="text-lg font-semibold text-gray-900">{booking.event_title}</h3>
-              <p className="text-sm text-gray-500">Manager: {booking.manager_email}</p>
-              <p className="text-xs text-gray-400 mt-1">
-                Requested on: {new Date(booking.created_at).toLocaleDateString()}
-              </p>
-            </div>
+      const options = {
+        key: res.data.key,
+        amount: res.data.amount,
+        currency: "INR",
+        name: "Utsavora",
+        description: "Event Booking Payment",
+        order_id: res.data.order_id,
+        handler: async (response) => {
+          try {
+             // 2. Verify Payment
+             await api.post("/payments/verify/", response);
+             toast.success("Payment successful!");
+             // Refresh bookings to update status
+             const refreshRes = await api.get("/bookings/list/");
+             setBookings(refreshRes.data);
+          } catch (verifyErr) {
+             console.error(verifyErr);
+             toast.error("Payment verification failed");
+          }
+        },
+        theme: { color: "#6D28D9" },
+      };
 
-            <div className="flex flex-col items-end gap-2">
-              <StatusBadge status={booking.status} />
-              
-              {booking.status === "PAYMENT_PENDING" && (
-                <div className="mt-2">
-                    <p className="text-xs text-red-500 mb-1 text-right">
-                        Expires: {new Date(booking.payment_deadline).toLocaleString()}
-                    </p>
-                    <PayAdvanceButton bookingId={booking.id} />
-                </div>
-              )}
-            </div>
+      const rzp = new window.Razorpay(options);
+      rzp.open();
 
-          </div>
-        ))}
-
-        {bookings.length === 0 && (
-          <div className="text-center p-12 bg-gray-50 rounded-lg">
-            <p className="text-gray-500">You haven't made any bookings yet.</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function StatusBadge({ status }) {
-  const styles = {
-    REQUESTED: "bg-blue-100 text-blue-800",
-    ACCEPTED: "bg-purple-100 text-purple-800",
-    PAYMENT_PENDING: "bg-yellow-100 text-yellow-800",
-    CONFIRMED: "bg-green-100 text-green-800",
-    REJECTED: "bg-red-100 text-red-800",
-    CANCELLED: "bg-gray-100 text-gray-800",
-    COMPLETED: "bg-teal-100 text-teal-800",
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to initiate payment");
+    }
   };
 
+  if (loading) return <Loader text="Loading your bookings..." />;
+
   return (
-    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${styles[status] || "bg-gray-100"}`}>
-      {status.replace("_", " ")}
-    </span>
+    <div className="p-6 max-w-4xl mx-auto space-y-6">
+      <h1 className="text-2xl font-bold">My Bookings</h1>
+
+      {bookings.length === 0 ? (
+        <EmptyState message="You haven't booked any events yet." />
+      ) : (
+        <div className="space-y-4">
+          {bookings.map((booking) => (
+            <div
+              key={booking.id}
+              className="bg-white p-4 rounded shadow border border-gray-100 flex flex-col md:flex-row justify-between md:items-center gap-4"
+            >
+              <div>
+                <h3 className="font-semibold text-lg">{booking.event_title}</h3>
+                <p className="text-gray-600 text-sm">Manager: {booking.manager_email}</p>
+                <div className="text-sm text-gray-500 mt-1">
+                  Booked on: {new Date(booking.created_at).toLocaleDateString()}
+                </div>
+              </div>
+
+              <div className="flex flex-col items-end gap-2">
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                    booking.status === "ACCEPTED"
+                      ? "bg-green-100 text-green-700"
+                      : booking.status === "PENDING"
+                      ? "bg-yellow-100 text-yellow-700"
+                      : booking.status === "REJECTED"
+                      ? "bg-red-100 text-red-700"
+                      : "bg-gray-100 text-gray-700"
+                  }`}
+                >
+                  {booking.status}
+                </span>
+                
+                {booking.status === "ACCEPTED" && booking.payment_status !== "PAID" && (
+                    <button 
+                      onClick={() => startPayment(booking.id)}
+                      className="text-sm bg-green-600 text-white px-4 py-1 rounded hover:bg-green-700"
+                    >
+                        Pay Now
+                    </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

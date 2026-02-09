@@ -1,30 +1,60 @@
 import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import api from "../../services/api";
-import ManagerCard from "../../components/booking/ManagerCard";
-
-import Loader from "../../components/common/Loader";
-import EmptyState from "../../components/common/EmptyState";
+import toast from "react-hot-toast";
 
 export default function HireManager() {
   const [managers, setManagers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+  const { id: eventId } = useParams();
 
-  // ... useEffect stays same ...
+  useEffect(() => {
+    // Use the public packages API created in events app
+    api.get("/events/packages/")
+      .then(res => setManagers(res.data))
+      .catch((err) => {
+        console.error(err);
+        toast.error("Failed to load managers");
+      });
+  }, []);
 
-  if (loading) return <Loader text="Loading managers..." />;
+  const handleHire = async (packageId) => {
+    if (!window.confirm("Are you sure you want to request this package?")) return;
+
+    try {
+      await api.post("/bookings/create/", {
+        event_id: eventId,
+        package_id: packageId
+      });
+
+      toast.success("Booking request sent! Waiting for manager approval.");
+      navigate("/user/bookings");
+    } catch (err) {
+      console.error(err);
+      const msg = err.response?.data?.error || err.response?.data?.detail || "Booking failed";
+      toast.error(msg);
+    }
+  };
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6">Available Managers</h1>
-        {managers.length === 0 ? (
-            <EmptyState message="No managers available in your area." />
-        ) : (
-            <div className="grid md:grid-cols-2 gap-6">
-            {managers.map((m) => (
-                <ManagerCard key={m.id} manager={m} />
-            ))}
-            </div>
-        )}
+    <div className="p-6">
+      <h2 className="text-2xl font-bold mb-4">Select Manager Package</h2>
+
+      {managers.map(pkg => (
+        <div key={pkg.id} className="border p-4 mb-4 rounded bg-white shadow-sm">
+          <h3 className="font-semibold text-lg">{pkg.title}</h3>
+          <p className="text-gray-600">{pkg.description}</p>
+          <p className="font-bold mt-2">₹{pkg.price}</p>
+          <p className="text-sm text-gray-500 mb-2">By: {pkg.manager_name || "Manager"}</p>
+
+          <button 
+            onClick={() => handleHire(pkg.id)}
+            className="bg-green-600 text-white px-4 py-1 mt-2 rounded hover:bg-green-700 transition"
+          >
+            Book
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

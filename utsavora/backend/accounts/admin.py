@@ -6,7 +6,9 @@ from .models import (
     ManagerProfile,
     BankDetails,
     EmailOTP,
-    AuditLog
+    EmailOTP,
+    AuditLog,
+    ManagerAvailability
 )
 
 class ManagerProfileInline(admin.StackedInline):
@@ -85,6 +87,12 @@ admin.site.register(UserProfile)
 admin.site.register(ManagerProfile)
 admin.site.register(BankDetails)
 admin.site.register(EmailOTP)
+@admin.register(ManagerAvailability)
+class ManagerAvailabilityAdmin(admin.ModelAdmin):
+    list_display = ('manager', 'date', 'status', 'booking', 'created_at')
+    list_filter = ('status', 'date')
+    search_fields = ('manager__email', 'booking__event__title')
+
 admin.site.register(AuditLog)
 
 

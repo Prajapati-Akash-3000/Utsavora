@@ -1,6 +1,7 @@
 from django.db import models
 from accounts.models import User
 from events.models import Event
+from packages.models import Package
 from django.utils import timezone
 from datetime import timedelta
 
@@ -9,16 +10,26 @@ class Booking(models.Model):
         ("PENDING", "Pending"),
         ("ACCEPTED", "Accepted"),
         ("REJECTED", "Rejected"),
-        ("PAYMENT_PENDING", "Payment Pending"),
+        ("PAID", "Paid"),
         ("CONFIRMED", "Confirmed"),
         ("CANCELLED", "Cancelled"),
+        ("COMPLETED", "Completed"),
     )
 
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    package = models.ForeignKey(Package, on_delete=models.CASCADE, null=True, blank=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="bookings")
     manager = models.ForeignKey(User, on_delete=models.CASCADE, related_name="manager_bookings")
 
     status = models.CharField(max_length=20, choices=BOOKING_STATUS, default="PENDING")
+
+    payment_status = models.CharField(
+        max_length=20,
+        choices=[('UNPAID','Unpaid'), ('PAID','Paid')],
+        default='UNPAID'
+    )
+
+    payment_id = models.CharField(max_length=100, blank=True, null=True)
 
     accepted_at = models.DateTimeField(null=True, blank=True)
     payment_deadline = models.DateTimeField(null=True, blank=True)
@@ -35,27 +46,3 @@ class Booking(models.Model):
 
     def __str__(self):
         return f"{self.event.title} → {self.manager.email}"
-
-class ManagerAvailability(models.Model):
-    manager = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name="blocked_dates"
-    )
-    booking = models.OneToOneField(
-        Booking,
-        on_delete=models.CASCADE,
-        related_name="availability"
-    )
-    start_date = models.DateField()
-    end_date = models.DateField()
-
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        indexes = [
-            models.Index(fields=["manager", "start_date", "end_date"])
-        ]
-
-    def __str__(self):
-        return f"{self.manager.email} blocked {self.start_date} → {self.end_date}"

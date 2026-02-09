@@ -306,81 +306,135 @@ def add_or_update_bank_details(request):
 @api_view(['GET'])
 @permission_classes([IsManager])
 def get_manager_availability(request):
-    # 1. Manual Blocks
-    blocked_query = ManagerAvailability.objects.filter(manager=request.user)
+    # Fetch all availability records (both Manual Blocks & Booked Events)
+    availabilities = ManagerAvailability.objects.filter(manager=request.user)
     data = []
     
-    for block in blocked_query:
+    for av in availabilities:
+        title = "Unavailable"
+        event_name = None
+        event_id = None
+        
+        if av.status == "BOOKED":
+            title = "Booked Event"
+            if av.booking and av.booking.event:
+                event_name = av.booking.event.title
+                event_id = av.booking.event.id
+        elif av.status == "BLOCKED":
+            title = "Blocked Manually"
+        
         data.append({
-            "id": block.id,
-            "date": block.date,
-            "type": "BLOCKED",
-            "title": "Unavailable"
-        })
-
-    # 2. Confirmed Bookings
-    # Import inside to avoid circular dependency
-    from bookings.models import Booking
-    
-    # We include ACCEPTED/PAYMENT_PENDING/CONFIRMED to ensure visual coverage
-    # or strictly CONFIRMED if that's the only "Green" state. 
-    # User said "status = CONFIRMED". Let's stick to that for Green.
-    # But for safety, maybe all active bookings should be shown? 
-    # Attempting to stick to user request: "Booked Dates... Condition: status = CONFIRMED"
-    bookings = Booking.objects.filter(
-        manager=request.user, 
-        status="CONFIRMED"
-    ).select_related('event')
-
-    for b in bookings:
-        data.append({
-            "id": b.id,
-            "date": b.event.event_date,
-            "type": "BOOKED",
-            "title": b.event.title
+            "id": av.id,
+            "date": av.date,
+            "status": av.status, # 'BLOCKED' or 'BOOKED'
+            "title": title,
+            "event_name": event_name,
+            "event_id": event_id
         })
 
     return Response(data)
 
-@api_view(['POST'])
+@api_view(['GET'])
 @permission_classes([IsManager])
-def add_blocked_date(request):
-    date = request.data.get("date")
-
-    if not date:
-        return Response(
-            {"detail": "Date is required."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    try:
-        ManagerAvailability.objects.create(
-            manager=request.user,
-            date=date
-        )
-    except IntegrityError:
-        return Response(
-            {"detail": "This date is already blocked."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    return Response(
-        {"detail": "Date blocked successfully."},
-        status=status.HTTP_201_CREATED
+def manager_earnings(request):
+    # Need to import Booking here or at top. Using lazy import inside if not at top. 
+    # But better to check if Booking is imported. 
+    # Accounts views usually don't import Booking to avoid circular deps if possible, 
+    # but ManagerAvailability has FK to Booking, so Booking model is loaded.
+    from bookings.models import Booking
+    
+    completed_bookings = Booking.objects.filter(
+        manager=request.user,
+        status="COMPLETED"
     )
+    
+    pending_bookings = Booking.objects.filter(
+        manager=request.user,
+        status="CONFIRMED"
+    )
+
+    # Calculate total
+    total_released = sum(b.package.price for b in completed_bookings if b.package) 
+    total_pending = sum(b.package.price for b in pending_bookings if b.package)
+    
+    # Combine for total stats if needed or just send both
+    
+    return Response({
+        "total_earned": total_released, # Earned usually means realized/released
+        "pending_clearance": total_pending,
+        "events_completed": completed_bookings.count(),
+        "events_pending": pending_bookings.count(),
+        "recent": [
+            {
+              "event": b.event.title,
+              "amount": b.package.price if b.package else 0,
+              "date": b.event.end_date or b.event.event_date,
+              "status": "COMPLETED"
+            }
+            for b in completed_bookings[:5]
+        ]
+    })
+
+from django.views.decorators.csrf import csrf_exempt
+
+from rest_framework.views import APIView
+from rest_framework_simplejwt.authentication import JWTAuthentication
+
+class BlockDateView(APIView):
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [JWTAuthentication] # Explicitly use JWT to bypass CSRF (Session)
+    
+    def post(self, request):
+        if request.user.role != "MANAGER":
+            return Response(
+                {"detail": "Only managers can block dates"},
+                status=403
+            )
+
+        date = request.data.get("date")
+        if not date:
+            return Response(
+                {"detail": "Date is required"},
+                status=400
+            )
+
+        try:
+            ManagerAvailability.objects.create(
+                manager=request.user,
+                date=date,
+                status="BLOCKED" # Default manual block
+            )
+            return Response(
+                {"message": "Date blocked successfully"},
+                status=201
+            )
+
+        except IntegrityError:
+            return Response(
+                {"detail": "Date already blocked"},
+                status=400
+            )
 
 @api_view(['DELETE'])
 @permission_classes([IsManager])
-def remove_blocked_date(request, id):
-    try:
-        blocked = ManagerAvailability.objects.get(
-            id=id,
-            manager=request.user
-        )
-        blocked.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-    except ManagerAvailability.DoesNotExist:
+def remove_blocked_date(request):
+    # This replaces the old ID-based deletion with safer date-based unblocking
+    date = request.data.get("date")
+    
+    if not date:
+        return Response({"detail": "Date is required"}, status=400)
+
+    # 🔥 CRITICAL SAFETY CHECK: Only delete MANUAL blocks
+    deleted_count, _ = ManagerAvailability.objects.filter(
+        manager=request.user,
+        date=date,
+        status="BLOCKED"  # Only manual blocks!
+    ).delete()
+
+    if deleted_count == 0:
         return Response(
-            {"detail": "Not found"},
-            status=status.HTTP_404_NOT_FOUND
+            {"detail": "No manual block found for this date. Booked dates cannot be removed."},
+            status=404
         )
+        
+    return Response({"message": "Date unblocked successfully"})

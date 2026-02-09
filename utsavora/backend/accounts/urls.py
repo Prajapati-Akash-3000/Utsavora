@@ -43,6 +43,7 @@ urlpatterns = [
 
     # Manager Availability Routes
     path('manager/availability/', views.get_manager_availability),
-    path('manager/availability/add/', views.add_blocked_date),
-    path('manager/availability/<int:id>/delete/', views.remove_blocked_date),
+    path('manager/availability/add/', views.BlockDateView.as_view()),
+    path('manager/availability/remove/', views.remove_blocked_date),
+    path('manager/earnings/', views.manager_earnings),
 ]

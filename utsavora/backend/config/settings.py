@@ -148,6 +148,9 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
 CORS_ALLOW_ALL_ORIGINS = True
 
 REST_FRAMEWORK = {
@@ -165,6 +168,7 @@ SIMPLE_JWT = {
 
 CRONJOBS = [
     ('*/5 * * * *', 'bookings.tasks.expire_unpaid_bookings'),
+    ('0 1 * * *', 'bookings.tasks.complete_events'), # Runs at 1:00 AM daily
 ]
 
 # Email Configuration
@@ -176,7 +180,7 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
 EMAIL_HOST_USER = 'akashprajapati9019@gmail.com'
-EMAIL_HOST_PASSWORD = 'muxm qmbx hrqw hfjc'
+EMAIL_HOST_PASSWORD = 'bjca duqf edwq bhzd'
 
 DEFAULT_FROM_EMAIL = 'Utsavora <akashprajapati9019@gmail.com>'
 

@@ -125,6 +125,11 @@ class AuditLog(models.Model):
         return f"{self.action} - {self.user_email}"
 
 class ManagerAvailability(models.Model):
+    STATUS_CHOICES = (
+        ("BOOKED", "Booked (Event)"),
+        ("BLOCKED", "Blocked (Manual)"),
+    )
+
     manager = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -132,6 +137,17 @@ class ManagerAvailability(models.Model):
         related_name='account_blocked_dates'
     )
     date = models.DateField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="BLOCKED")
+    
+    # Booking FK to link this date to a specific booking (optional, null for manual blocks)
+    booking = models.ForeignKey(
+        'bookings.Booking',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='availability_slots'
+    )
+    
     reason = models.CharField(max_length=255, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -141,4 +157,4 @@ class ManagerAvailability(models.Model):
         ordering = ['date']
 
     def __str__(self):
-        return f"{self.manager.email} - {self.date}"
+        return f"{self.manager.email} - {self.date} ({self.status})"

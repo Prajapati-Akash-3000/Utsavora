@@ -47,7 +47,7 @@ export default function UserRoutes() {
       />
 
       <Route
-        path="/user/hire/:id"
+        path="/user/event/:id/hire"
         element={
           <ProtectedRoute role="USER">
             <HireManager />

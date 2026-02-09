@@ -10,9 +10,7 @@ export default function CompletedEventPanel() {
       </p>
 
       <div className="mt-4 flex gap-4">
-        <button className="border px-4 py-2 rounded">
-          Download Invite
-        </button>
+
 
         <button className="border px-4 py-2 rounded">
           View Photos

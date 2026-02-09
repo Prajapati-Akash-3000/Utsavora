@@ -1,9 +1,10 @@
-import { Routes } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 
 import PublicRoutes from "./PublicRoutes";
 import UserRoutes from "./UserRoutes";
 import ManagerRoutes from "./ManagerRoutes";
 import AdminRoutes from "./AdminRoutes";
+import NotFound from "../pages/NotFound";
 
 export default function AppRoutes() {
   // Using function invocation {} because these components return Fragments of <Route>
@@ -14,6 +15,7 @@ export default function AppRoutes() {
       {UserRoutes()}
       {ManagerRoutes()}
       {AdminRoutes()}
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }

@@ -1,19 +1,21 @@
 import api from "../../services/api";
+import toast from "react-hot-toast";
 
 export default function PayAdvanceButton({ bookingId }) {
   const pay = async () => {
     try {
         const res = await api.post(
-            `/payments/${bookingId}/create-order/`
+            "/payments/create-order/",
+            { booking_id: bookingId }
         );
         
         if (!res.data || !res.data.order_id) {
-            alert("Failed to create payment order. Please try again.");
+            toast.error("Failed to create payment order. Please try again.");
             return;
         }
 
         const options = {
-            key: res.data.razorpay_key,
+            key: res.data.key, // Ensure backend returns 'key' not 'razorpay_key' if changed, checked view, it returns 'key'
             amount: res.data.amount,
             currency: "INR",
             name: "Utsavora Events",
@@ -26,15 +28,15 @@ export default function PayAdvanceButton({ bookingId }) {
                         razorpay_payment_id: response.razorpay_payment_id,
                         razorpay_signature: response.razorpay_signature
                     });
-                    alert("Payment successful! Your booking is confirmed.");
+                    toast.success("Payment successful! Your booking is confirmed.");
                     window.location.reload();
                 } catch (verifyErr) {
                     console.error("Verification failed", verifyErr);
-                    alert("Payment verification failed. Please contact support.");
+                    toast.error("Payment verification failed. Please contact support.");
                 }
             },
             prefill: {
-                name: "", // Can be filled if we have user context
+                name: "", 
                 email: "",
                 contact: ""
             },
@@ -46,14 +48,14 @@ export default function PayAdvanceButton({ bookingId }) {
         const rzp = new window.Razorpay(options);
         
         rzp.on('payment.failed', function (response){
-            alert("Payment failed: " + response.error.description);
+            toast.error("Payment failed: " + response.error.description);
         });
 
         rzp.open();
 
     } catch (err) {
         console.error("Payment init error", err);
-        alert("Could not initiate payment. " + (err.response?.data?.error || err.message));
+        toast.error("Could not initiate payment. " + (err.response?.data?.error || err.message));
     }
   };
 
@@ -62,7 +64,7 @@ export default function PayAdvanceButton({ bookingId }) {
       onClick={pay}
       className="bg-green-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-green-700 transition shadow-md"
     >
-      Pay 50% Advance
+      Pay Now
     </button>
   );
 }
