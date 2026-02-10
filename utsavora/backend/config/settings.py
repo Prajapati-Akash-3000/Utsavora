@@ -187,3 +187,5 @@ DEFAULT_FROM_EMAIL = 'Utsavora <akashprajapati9019@gmail.com>'
 # Razorpay Configuration
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")
+
+CSRF_TRUSTED_ORIGINS = ['https://utsavora.onrender.com']
