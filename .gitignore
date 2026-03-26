@@ -1,2 +1,17 @@
-# OpenMemory - IDE/Assistant specific rules
-.cursor\rules\openmemory.mdc
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env
+
+# Node
+node_modules/
+dist/
+.eslintcache
+
+# OS
+.DS_Store
+Thumbs.db
