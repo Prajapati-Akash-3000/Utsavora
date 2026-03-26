@@ -1,9 +1,8 @@
 from django.urls import path
-from .views import request_booking, accept_booking, reject_booking, list_user_bookings, create_booking, list_manager_requests, my_bookings, booking_conflicts
+from .views import request_booking, accept_booking, reject_booking, list_user_bookings, create_booking, list_manager_requests, booking_conflicts
 
 urlpatterns = [
     path('list/', list_user_bookings),
-    path('my/', my_bookings),
     path('manager/requests/', list_manager_requests),
     path('create/', create_booking),
     path('request/', request_booking),

@@ -5,6 +5,7 @@ from accounts.permissions import IsVerifiedUser, IsAdminUser
 from bookings.models import Booking
 from accounts.models import ManagerAvailability
 from .models import Payment
+from .serializers import PaymentSerializer
 from django.db.models import Sum
 from django.utils import timezone
 from django.conf import settings
@@ -23,9 +24,13 @@ def create_payment_order(request):
     except Booking.DoesNotExist:
         return Response({"error": "Booking not found"}, status=404)
 
-    if not booking.package:
-        return Response({"error": "Booking has no package"}, status=400)
-    amount = int(booking.package.price * 100)  # INR -> paise
+    if not booking.total_amount:
+        return Response({"error": "Booking has no price set"}, status=400)
+    amount = int(booking.total_amount * 100)  # INR -> paise
+
+    payment = Payment.objects.filter(booking=booking).first()
+    if payment and payment.status != "PENDING":
+        return Response({"error": "Payment already processed"}, status=400)
 
     order = client.order.create({
         "amount": amount,
@@ -33,12 +38,15 @@ def create_payment_order(request):
         "payment_capture": 1,
     })
 
-    # Create Payment record for tracking
-    Payment.objects.create(
+    Payment.objects.update_or_create(
         booking=booking,
-        amount=amount / 100,
-        transaction_id=order["id"],
-        status="PENDING"
+        defaults={
+            "amount": amount / 100,
+            "razorpay_order_id": order["id"],
+            "transaction_id": order["id"],
+            "status": "PENDING",
+            "payment_type": "ADVANCE" if booking.payment_status == "UNPAID" else "FINAL"
+        }
     )
 
     return Response({
@@ -59,8 +67,7 @@ def initiate_payment(request, booking_id):
     except Booking.DoesNotExist:
         return Response({"error": "Booking not found or not pending payment"}, status=404)
 
-    # TEMP: replace with package price later. Using fixed 5000 as 50% of 10000.
-    amount = 5000.00 
+    amount = booking.total_amount
 
     payment = Payment.objects.create(
         booking=booking,
@@ -83,79 +90,19 @@ def confirm_payment(request, booking_id):
         return Response({"error": "Booking or Payment not found"}, status=404)
 
     payment.status = "PAID"
-    payment.transaction_id = "TEST_TXN_123"
     payment.save()
 
     booking.status = "CONFIRMED"
+    booking.payment_status = "FULLY_PAID"
     booking.save()
 
     return Response({"message": "Booking confirmed"})
 
 @api_view(["POST"])
 @permission_classes([IsVerifiedUser])
-def initiate_fake_payment(request, booking_id):
-    booking = Booking.objects.get(id=booking_id)
-
-    if booking.user != request.user:
-        return Response({"error": "Unauthorized"}, status=403)
-
-    if booking.status != 'ACCEPTED':
-        return Response({"error": "Booking not accepted yet"}, status=400)
-
-    # Use package price if available, else standard 1000 for dummy
-    amount = booking.package.price if booking.package else 1000
-
-    # Calculate Fees
-    platform_fee = float(amount) * 0.10 # 10%
-    manager_amount = float(amount) - platform_fee
-
-    # Create Payment in ESCROW
-    payment = Payment.objects.create(
-        booking=booking,
-        amount=amount,
-        platform_fee=platform_fee,
-        manager_amount=manager_amount,
-        status='ESCROW',
-        razorpay_payment_id=f"fake_{timezone.now().timestamp()}" # Fake ID
-    )
-
-    booking.payment_status = 'PAID'
-    booking.payment_id = payment.razorpay_payment_id
-    booking.status = 'CONFIRMED'
-    booking.save()
-
-    # Auto-block date
-    try:
-        ManagerAvailability.objects.create(
-            manager=booking.manager,
-            date=booking.event.event_date,
-            status="BOOKED_EVENT"
-        )
-    except Exception as e:
-        print(f"Error blocking date: {e}")
-
-    # Send Notification Email
-    try:
-        email_payment_confirmed(booking.user, booking.manager, booking.event, amount)
-    except Exception as e:
-        print(f"⚠️ Email Error (Fake Payment Confirmation): {e}")
-
-    return Response({
-        "message": "Payment successful",
-        "payment_id": payment.id
-    })
-
-
-
-from events.services.email_service import email_payment_confirmed
-
-@api_view(["POST"])
-@permission_classes([IsVerifiedUser])
 def verify_payment(request):
     data = request.data
-    
     try:
-        # Verify signature
         client.utility.verify_payment_signature({
             "razorpay_order_id": data["razorpay_order_id"],
             "razorpay_payment_id": data["razorpay_payment_id"],
@@ -174,119 +121,100 @@ def verify_payment(request):
     if payment.status != "PENDING":
         return Response({"message": "Payment already processed"})
     
-    # Calculate Fees
     total_amount = float(payment.amount)
-    platform_fee = total_amount * 0.10 # 10%
+    platform_fee = total_amount * 0.10
     manager_amount = total_amount - platform_fee
 
-    payment.status = "ESCROW" # Hold money
+    payment.status = "ESCROW"
     payment.razorpay_payment_id = data["razorpay_payment_id"]
     payment.platform_fee = platform_fee
     payment.manager_amount = manager_amount
     payment.save()
 
     booking = payment.booking
-    booking.payment_status = "PAID" 
+    booking.payment_status = "FULLY_PAID" 
     booking.payment_id = data["razorpay_payment_id"]
     booking.status = "CONFIRMED"
     booking.save()
 
-    # Auto-block date
+    # Block calendar
     try:
-        ManagerAvailability.objects.create(
-            manager=booking.manager,
-            date=booking.event.event_date,
-            status="BOOKED_EVENT"
-        )
+        event = booking.event
+        start = event.start_date
+        end = event.end_date or event.start_date
+        if start and end:
+            from datetime import timedelta
+            curr = start
+            while curr <= end:
+                ManagerAvailability.objects.get_or_create(
+                    manager=booking.manager,
+                    date=curr,
+                    defaults={"status": "BOOKED", "booking": booking}
+                )
+                curr += timedelta(days=1)
     except Exception as e:
-        print(f"Error blocking date: {e}")
-
-    # Send Notification Email
-    try:
-        email_payment_confirmed(booking.user, booking.manager, booking.event, total_amount)
-    except Exception as e:
-        print(f"⚠️ Email Error (Payment Confirmation): {e}")
+        print(f"Error blocking dates: {e}")
 
     return Response({"message": "Payment verified successfully"})
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def list_payouts(request):
+    if hasattr(request.user, 'manager_profile'):
+        payments = Payment.objects.filter(booking__manager=request.user.manager_profile, status="ESCROW")
+        total_payout = payments.aggregate(Sum('manager_amount'))['manager_amount__sum'] or 0
+        return Response({
+            "payments": PaymentSerializer(payments, many=True).data,
+            "total_payout": total_payout
+        })
+    return Response({"error": "Manager profile not found"}, status=404)
 
 @api_view(["GET"])
 @permission_classes([IsAdminUser])
-def admin_escrow_summary(request): # Renamed from admin_finance_summary for clarity
-    total_escrow = Payment.objects.filter(
-        status="ESCROW"
-    ).aggregate(Sum("manager_amount"))["manager_amount__sum"] or 0
+def admin_list_all_payments(request):
+    payments = Payment.objects.all().order_by("-created_at")
+    return Response(PaymentSerializer(payments, many=True).data)
 
-    total_revenue = Payment.objects.aggregate(Sum("platform_fee"))["platform_fee__sum"] or 0
-
-    pending_payouts = Payment.objects.filter(status="ESCROW").count()
-
-    total_volume = Payment.objects.filter(
-        status__in=["ESCROW", "RELEASED"]
-    ).aggregate(Sum("amount"))["amount__sum"] or 0
-
-    return Response({
-        "total_escrow": total_escrow,
-        "platform_revenue": total_revenue,
-        "pending_payouts": pending_payouts,
-        "total_transaction_volume": total_volume,
-    })
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def initiate_fake_payment(request, booking_id):
+    booking = get_object_or_404(Booking, id=booking_id, user=request.user)
+    booking.payment_status = "FULLY_PAID"
+    booking.status = "CONFIRMED"
+    booking.save()
+    return Response({"message": "Fake payment successful"})
 
 @api_view(["GET"])
 @permission_classes([IsAdminUser])
-def admin_escrow_list(request): # Renamed from admin_transactions
-    payments = Payment.objects.select_related(
-        "booking", "booking__user", "booking__manager", "booking__event"
-    ).order_by("-created_at")
+def admin_escrow_summary(request):
+    data = Payment.objects.aggregate(
+        total_escrow=Sum('amount'),
+        total_fees=Sum('platform_fee'),
+        total_manager=Sum('manager_amount')
+    )
+    return Response(data)
 
-    return Response([
-        {
-            "id": p.id,
-            "event": p.booking.event.title,
-            "user": p.booking.user.email,
-            "manager": p.booking.manager.email,
-            "amount": p.amount,
-            "manager_amount": p.manager_amount,
-            "status": p.status,
-            "date": p.created_at,
-        }
-        for p in payments
-    ])
+@api_view(["GET"])
+@permission_classes([IsAdminUser])
+def admin_escrow_list(request):
+    payments = Payment.objects.filter(status="ESCROW")
+    return Response(PaymentSerializer(payments, many=True).data)
 
 @api_view(["POST"])
 @permission_classes([IsAdminUser])
 def release_payment(request, payment_id):
-    try:
-        payment = Payment.objects.get(id=payment_id, status="ESCROW")
-    except Payment.DoesNotExist:
-        return Response({"error": "Payment not found or not in ESCROW"}, status=404)
-
-    # 🔐 Simulated bank transfer
-    payment.status = "RELEASED"
+    payment = get_object_or_404(Payment, id=payment_id, status="ESCROW")
+    payment.status = "PAID"
     payment.save()
-
     return Response({"message": "Payment released to manager"})
 
 @api_view(["POST"])
 @permission_classes([IsAdminUser])
 def refund_payment(request, payment_id):
-    try:
-        payment = Payment.objects.get(id=payment_id)
-    except Payment.DoesNotExist:
-         return Response({"error": "Payment not found"}, status=404)
-
-    if payment.status == "REFUNDED":
-        return Response({"error": "Already refunded"}, status=400)
-
+    payment = get_object_or_404(Payment, id=payment_id, status="ESCROW")
     payment.status = "REFUNDED"
     payment.save()
-
     booking = payment.booking
-    booking.status = "CANCELLED"
-    booking.payment_status = "REFUNDED" # Optional: update if models allow choices update
+    booking.payment_status = "REFUNDED"
     booking.save()
-    
-    # Optional: Remove blocked date 
-    # ManagerAvailability.objects.filter(booking=booking).delete()
-
-    return Response({"message": "Refund processed and booking cancelled"})
+    return Response({"message": "Payment refunded to user"})

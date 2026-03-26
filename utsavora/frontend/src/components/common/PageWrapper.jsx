@@ -1,12 +1,17 @@
-import { motion as Motion } from "framer-motion";
+import { motion as Motion, useReducedMotion } from "framer-motion";
+import { pageVariants } from "../../motion/variants/pageVariants";
 
-export default function PageWrapper({ children }) {
+export default function PageWrapper({ children, className = "" }) {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
     <Motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      transition={{ duration: 0.25 }}
+      variants={pageVariants}
+      initial="hidden"
+      animate="visible"
+      exit="exit"
+      transition={shouldReduceMotion ? { duration: 0 } : undefined}
+      className={className}
     >
       {children}
     </Motion.div>

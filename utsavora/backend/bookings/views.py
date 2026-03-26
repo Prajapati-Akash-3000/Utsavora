@@ -3,7 +3,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from accounts.permissions import IsVerifiedUser, IsActiveManager
-from accounts.models import User, ManagerAvailability
+from accounts.models import User
+from accounts.models import ManagerProfile, ManagerAvailability
 from events.models import Event
 from .models import Booking
 from .serializers import BookingSerializer
@@ -22,32 +23,69 @@ def create_booking(request):
 
     event = get_object_or_404(Event, id=event_id, created_by=user)
     package = get_object_or_404(Package, id=package_id)
-    manager = package.manager.user # package.manager is a ManagerProfile
+    manager = package.manager
 
-    # 🔒 Availability check (Explicit Blocked Dates - New Model)
-    # Check if manager has explicitly blocked this date
-    # No need to check managerprofile anymore, we use User directly for ManagerAvailability
+    start = event.start_date
+    end = event.end_date or event.start_date
+
+    # 🔒 Availability check
     if ManagerAvailability.objects.filter(
         manager=manager,
-        date=event.event_date
+        date__range=(start, end),
+        status="BLOCKED"
     ).exists():
         return Response(
-            {"error": "Manager not available on this date"},
+            {"error": "Manager has blocked out one or more dates for this event."},
             status=400
         )
-             
-    # Check if already booked (CONFIRMED or ACCEPTED?)
-    # For now, let's assume CONFIRMED blocks it. ACCEPTED also blocks it via ManagerBlockedDate.
+        
+    # 🔒 Conflict Check
+    from bookings.models import Booking as BK
+    paid_conflicts = BK.objects.filter(
+        manager=manager,
+        status="CONFIRMED",
+        payment_status="FULLY_PAID",
+        event__start_date__lte=end,
+        event__end_date__gte=start
+    )
+    if paid_conflicts.exists():
+        return Response(
+            {"error": "Manager is already booked for these dates."},
+            status=400
+        )
+
+    # 🛑 Prevent hiring for started or completed events
+    today = timezone.now().date()
+    if event.status in [Event.Status.COMPLETED, Event.Status.CANCELLED]:
+        return Response({"error": f"Event is {event.status.lower()} and cannot be managed."}, status=400)
+    
+    event_date = event.start_date
+    if event_date and today >= event_date:
+        return Response({"error": "Event has already started or is today. You cannot hire a manager now."}, status=400)
+    
+    # Check if already booked
+    active_booking = Booking.objects.filter(
+        event=event,
+        manager=manager,
+        status__in=["PENDING", "ACCEPTED", "CONFIRMED"]
+    ).first()
+    
+    if active_booking:
+        return Response(
+            {"error": f"You already have an active booking request with this manager (status: {active_booking.status})."},
+            status=400
+        )
+    
     booking = Booking.objects.create(
         user=user,
         event=event,
         package=package,
         manager=manager,
-        status="PENDING" 
+        status="PENDING",
+        total_amount=package.price if package else 0
     )
     
-    # 🔄 Event Status -> PENDING
-    event.status = "PENDING"
+    event.status = Event.Status.CREATED
     event.save(update_fields=["status"])
 
     return Response(
@@ -70,20 +108,47 @@ def request_booking(request):
         return Response({"error": "Event not found or does not belong to you"}, status=404)
         
     try:
-        manager = User.objects.get(id=manager_id, role="MANAGER", manager_status="ACTIVE")
-    except User.DoesNotExist:
+        manager = ManagerProfile.objects.get(id=manager_id, manager_status="ACTIVE")
+    except ManagerProfile.DoesNotExist:
         return Response({"error": "Manager not found or not active"}, status=404)
 
-    # 🔒 Availability check (Explicit Blocked Dates - New Model)
-    # Check if manager has explicitly blocked this date
+    start = event.start_date
+    end = event.end_date or event.start_date
+
+    # 🔒 Availability check
     if ManagerAvailability.objects.filter(
         manager=manager,
-        date=event.event_date
+        date__range=(start, end),
+        status="BLOCKED"
     ).exists():
         return Response(
-            {"detail": "Manager is not available on the selected date."},
+            {"detail": "Manager has blocked out one or more dates for this event."},
             status=400
         )
+        
+    # 🔒 Conflict Check
+    from bookings.models import Booking as BK
+    paid_conflicts = BK.objects.filter(
+        manager=manager,
+        status="CONFIRMED",
+        payment_status="FULLY_PAID",
+        event__start_date__lte=end,
+        event__end_date__gte=start
+    )
+    if paid_conflicts.exists():
+        return Response(
+            {"detail": "Manager is already booked for these dates."},
+            status=400
+        )
+
+    # 🛑 Prevent hiring for started or completed events
+    today = timezone.now().date()
+    if event.status in [Event.Status.COMPLETED, Event.Status.CANCELLED]:
+        return Response({"error": f"Event is {event.status.lower()} and cannot be managed."}, status=400)
+    
+    event_date = event.start_date
+    if event_date and today >= event_date:
+        return Response({"error": "Event has already started or is today. You cannot hire a manager now."}, status=400)
              
     booking = Booking.objects.create(
         event=event,
@@ -92,32 +157,22 @@ def request_booking(request):
         status="PENDING" 
     )
 
-    # 🔄 Event Status -> PENDING
-    event.status = "PENDING"
+    event.status = Event.Status.CREATED
     event.save(update_fields=["status"])
 
-    # Send Email (Defensive Wrap)
-    try:
-        email_manager_request(manager, event)
-    except Exception as e:
-        print(f"⚠️ Email Error (Manager Request): {e}")
-
     return Response({"message": "Booking request sent", "booking_id": booking.id})
-
-
-from events.services.email_service import email_manager_request, email_manager_accepted
 
 @api_view(["POST"])
 @permission_classes([IsActiveManager])
 def accept_booking(request, booking_id):
     try:
+        manager = request.user.manager_profile
         booking = get_object_or_404(
             Booking,
             id=booking_id,
-            manager=request.user
+            manager=manager
         )
 
-        # 🔒 STATUS VALIDATION
         if booking.status != "PENDING":
             return Response(
                 {"error": f"Cannot accept booking in '{booking.status}' state"},
@@ -125,124 +180,101 @@ def accept_booking(request, booking_id):
             )
 
         event = booking.event
-        # Handle nullable start/end if legacy event_date is used (fallback)
-        start = event.start_date or event.event_date
-        end = event.end_date or event.event_date
+        start = event.start_date
+        end = event.end_date or event.start_date
 
         if not start or not end:
-             return Response(
-                {"error": "Event dates are invalid (None)"},
-                status=400
-            )
+             return Response({"error": "Event dates are invalid"}, status=400)
 
-        # 🔒 Conflict Check: Check if ANY date in range is explicitly blocked/booked
-        conflicts = ManagerAvailability.objects.filter(
-            manager=request.user,
-            date__range=(start, end)
+        # 🔒 Conflict Check
+        from bookings.models import Booking as BK
+        paid_conflicts = BK.objects.filter(
+            manager=manager,
+            status="CONFIRMED",
+            payment_status="FULLY_PAID",
+            event__start_date__lte=end,
+            event__end_date__gte=start
+        ).exclude(id=booking.id)
+
+        manual_blocks = ManagerAvailability.objects.filter(
+            manager=manager,
+            date__range=(start, end),
+            status="BLOCKED"
         )
 
-        if conflicts.exists():
-            # Check if it is THIS booking? If so, we might be re-accepting (but status check handles that)
-            # Or maybe we have a lingering block?
-            # For now, strict block.
+        if paid_conflicts.exists() or manual_blocks.exists():
             return Response(
                 {"error": "One or more dates in this range are already unavailable."},
                 status=400
             )
 
-        # 🔥 Atomic Operation
         with transaction.atomic():
             booking.status = "ACCEPTED"
             booking.accepted_at = timezone.now()
             booking.save()
             
-            # 🔄 Event Status -> ACTIVE (Manager Hired)
-            event.status = "ACTIVE"
+            event.status = Event.Status.CONFIRMED
             event.save(update_fields=["status"])
-            
-            # Send Email (Defensive Wrap)
-            try:
-                email_manager_accepted(booking.user, event)
-            except Exception as e:
-                print(f"⚠️ Email Error (Manager Acceptance): {e}")
 
-            # Create/Lock dates
-            # Iterate from start to end
-            curr = start
-            while curr <= end:
-                # Use get_or_create to be safe against race/duplicates
-                ManagerAvailability.objects.get_or_create(
-                    manager=request.user,
-                    date=curr,
-                    defaults={
-                        "status": "BOOKED",
-                        "booking": booking
-                    }
-                )
-                curr += timedelta(days=1)
-
-        return Response(
-            {"message": "Booking accepted and dates locked successfully."},
-            status=status.HTTP_200_OK
-        )
+        return Response({"message": "Booking accepted. Awaiting user payment to confirm."}, status=200)
 
     except Exception as e:
         import traceback
-        print("❌ ACCEPT BOOKING ERROR ❌")
         print(traceback.format_exc())
-        return Response(
-            {"error": str(e)},
-            status=500
-        )
-
+        return Response({"error": str(e)}, status=500)
 
 @api_view(["POST"])
 @permission_classes([IsActiveManager])
 def reject_booking(request, booking_id):
-    booking = get_object_or_404(Booking, id=booking_id, manager=request.user)
+    manager = request.user.manager_profile
+    booking = get_object_or_404(Booking, id=booking_id, manager=manager)
 
     if booking.status != "PENDING":
-        return Response(
-            {"error": f"Cannot reject booking in '{booking.status}' state"},
-            status=400
-        )
+        return Response({"error": f"Cannot reject booking in '{booking.status}' state"}, status=400)
 
-    booking.status = "REJECTED"
-    booking.save()
+    with transaction.atomic():
+        booking.status = "REJECTED"
+        booking.save()
 
-    return Response(
-        {"message": "Booking rejected."},
-        status=status.HTTP_200_OK
-    )
+        event = booking.event
+        event.status = Event.Status.CREATED
+        event.save(update_fields=["status"])
+
+    return Response({"message": "Booking rejected."}, status=200)
 
 @api_view(["GET"])
 @permission_classes([IsVerifiedUser])
 def list_user_bookings(request):
-    bookings = Booking.objects.filter(user=request.user).order_by("-created_at")
-    serializer = BookingSerializer(bookings, many=True)
-    return Response(serializer.data)
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def my_bookings(request):
-    bookings = Booking.objects.filter(user=request.user).order_by('-created_at')
+    bookings = Booking.objects.filter(user=request.user).select_related(
+        'event', 'event__category', 'package', 'manager'
+    ).order_by("-created_at")
     serializer = BookingSerializer(bookings, many=True)
     return Response(serializer.data)
 
 @api_view(["GET"])
 @permission_classes([IsActiveManager])
 def list_manager_requests(request):
-    # Fetch all bookings for the logged-in manager (not just pending)
-    bookings = Booking.objects.filter(manager=request.user).order_by("-created_at")
+    manager = request.user.manager_profile
+    bookings = Booking.objects.filter(manager=manager).select_related(
+        'event', 'event__category', 'user', 'package'
+    ).order_by("-created_at")
     
     data = []
     for b in bookings:
         data.append({
             "id": b.id,
             "event": b.event.title,
-            "user_name": b.user.full_name,
-            "price": b.package.price if b.package else "N/A",
-            "date": b.event.event_date,
+            "event_id": b.event.id,
+            "event_category": (b.event.category.name if getattr(b.event, "category", None) else None),
+            "user_name": b.user.full_name or b.user.email,
+            "user_email": b.user.email,
+            "user_mobile": b.user.mobile,
+            "package_name": b.package.title if b.package else "Custom",
+            "price": b.total_amount,
+            "start_date": b.event.start_date,
+            "end_date": b.event.end_date,
+            "venue": b.event.venue,
+            "city": b.event.city,
             "status": b.status
         })
     return Response(data)
@@ -250,22 +282,18 @@ def list_manager_requests(request):
 @api_view(["GET"])
 @permission_classes([IsActiveManager])
 def booking_conflicts(request, booking_id):
-    booking = get_object_or_404(Booking, id=booking_id, manager=request.user)
-    event = booking.event
+    manager = request.user.manager_profile
+    booking = get_object_or_404(Booking, id=booking_id, manager=manager)
     
-    # Handle nullable dates
-    start = event.start_date or event.event_date
-    end = event.end_date or event.event_date
+    start = booking.event.start_date
+    end = booking.event.end_date or booking.event.start_date
     
-    if not start or not end:
-         return Response({"has_conflict": False, "reason": "No dates set"})
-
-    conflicts = ManagerAvailability.objects.filter(
-        manager=request.user,
-        date__range=(start, end)
-    )
-
-    return Response({
-        "has_conflict": conflicts.exists(),
-        "conflict_dates": [c.date for c in conflicts]
-    })
+    conflicts = Booking.objects.filter(
+        manager=manager,
+        status="CONFIRMED",
+        event__start_date__lte=end,
+        event__end_date__gte=start
+    ).exclude(id=booking.id)
+    
+    data = BookingSerializer(conflicts, many=True).data
+    return Response(data)

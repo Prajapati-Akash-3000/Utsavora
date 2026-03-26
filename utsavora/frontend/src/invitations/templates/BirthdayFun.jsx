@@ -1,58 +1,181 @@
-import React from 'react';
+import { formatDate } from "../utils/formatDate";
 
-// A playful, colorful birthday invitation template
-const BirthdayFun = ({ data }) => {
-    return (
-        <div 
-            className="w-[400px] h-[600px] bg-yellow-100 p-8 flex flex-col items-center justify-center text-center border-8 border-dashed border-blue-400 shadow-xl font-sans text-gray-800 relative overflow-hidden"
-            style={{ fontFamily: 'Verdana, sans-serif' }}
+export default function BirthdayFun({ data }) {
+  const host = data?.title || data?.host || "Someone";
+  const venue = data?.venue || "";
+  const city = data?.city || "";
+  const description = data?.description?.trim() || "Let's celebrate!";
+  const contactNumbers = data?.contact_numbers?.trim() || "";
+  const date = formatDate(data?.start_date, data?.end_date);
+  const timeStr = data?.start_time ? `${data.start_time.slice(0,5)}${data.end_time ? ` – ${data.end_time.slice(0,5)}` : ''}` : '';
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        padding: "clamp(24px, 6%, 64px) clamp(32px, 8%, 80px)",
+        background: "linear-gradient(145deg, #FEF3C7 0%, #FDE68A 40%, #FCD34D 100%)",
+        position: "relative",
+        overflow: "hidden",
+        boxSizing: "border-box",
+      }}
+    >
+      {/* Playful circles */}
+      <div
+        style={{
+          position: "absolute",
+          top: "-10%",
+          left: "-5%",
+          width: "35%",
+          height: "35%",
+          borderRadius: "50%",
+          background: "rgba(251, 146, 60, 0.35)",
+          pointerEvents: "none",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          bottom: "-8%",
+          right: "-5%",
+          width: "40%",
+          height: "40%",
+          borderRadius: "50%",
+          background: "rgba(236, 72, 153, 0.3)",
+          pointerEvents: "none",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          top: "20%",
+          right: "-2%",
+          width: "18%",
+          height: "18%",
+          borderRadius: "50%",
+          background: "rgba(139, 92, 246, 0.25)",
+          pointerEvents: "none",
+        }}
+      />
+
+      <span
+        style={{
+          fontFamily: "Inter, system-ui, sans-serif",
+          fontSize: "clamp(12px, 2vw, 18px)",
+          fontWeight: 800,
+          letterSpacing: "0.2em",
+          color: "#C2410C",
+          textTransform: "uppercase",
+          marginBottom: "clamp(6px, 1vw, 12px)",
+          position: "relative",
+          zIndex: 2,
+        }}
+      >
+        🎉 It's a party! 🎉
+      </span>
+
+      <h1
+        style={{
+          fontFamily: "Inter, system-ui, sans-serif",
+          fontSize: "clamp(26px, 5vw, 52px)",
+          fontWeight: 900,
+          color: "#7C2D12",
+          lineHeight: 1.15,
+          marginBottom: "clamp(8px, 1.5vw, 16px)",
+          position: "relative",
+          zIndex: 2,
+          textShadow: "0 2px 4px rgba(0,0,0,0.06)",
+        }}
+      >
+        {host}'s Birthday
+      </h1>
+
+      <p
+        style={{
+          fontFamily: "Inter, system-ui, sans-serif",
+          fontSize: "clamp(12px, 2vw, 17px)",
+          color: "#92400E",
+          fontWeight: 600,
+          marginBottom: "clamp(16px, 2.5vw, 28px)",
+          position: "relative",
+          zIndex: 2,
+        }}
+      >
+        {description}
+      </p>
+
+      <div
+        style={{
+          padding: "clamp(14px, 2.5vw, 22px) clamp(28px, 5vw, 48px)",
+          background: "#fff",
+          borderRadius: "9999px",
+          boxShadow: "0 4px 14px rgba(124, 45, 18, 0.15)",
+          marginBottom: "clamp(14px, 2vw, 24px)",
+          position: "relative",
+          zIndex: 2,
+        }}
+      >
+        <span
+          style={{
+            fontFamily: "Inter, system-ui, sans-serif",
+            fontSize: "clamp(13px, 2.2vw, 20px)",
+            fontWeight: 700,
+            color: "#7C2D12",
+          }}
         >
-            {/* Decorative circles */}
-            <div className="absolute top-[-50px] left-[-50px] w-32 h-32 rounded-full bg-purple-300 opacity-50"></div>
-            <div className="absolute bottom-[-50px] right-[-50px] w-40 h-40 rounded-full bg-pink-300 opacity-50"></div>
+          {date || "Date TBD"}
+        </span>
+        {timeStr && <div style={{ fontSize: '0.85em', marginTop: '8px', fontWeight: 500, opacity: 0.9 }}>{timeStr}</div>}
+      </div>
 
-            <div className="z-10 bg-white bg-opacity-80 p-6 rounded-xl shadow-sm w-full h-full flex flex-col justify-between">
-                <div>
-                    <h3 className="text-xl font-bold text-blue-500 tracking-wider uppercase mb-2">It's a Party!</h3>
-                    <h1 className="text-5xl font-extrabold text-purple-600 leading-tight">
-                        {data.host || "Someone"}'s<br/>Birthday
-                    </h1>
-                </div>
-
-                <div className="my-6 space-y-4">
-                    <div className="bg-pink-100 text-pink-600 px-4 py-2 rounded-full inline-block font-bold text-xl transform -rotate-2">
-                        {data.age ? `Turning ${data.age}!` : "Celebration!"}
-                    </div>
-                    
-                    <p className="text-lg text-gray-700 font-medium px-4">
-                        {data.message || "Join us for cake, games, and lots of fun!"}
-                    </p>
-                </div>
-
-                <div className="space-y-3">
-                    <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
-                        <p className="font-bold text-blue-800 text-lg">
-                            {data.start_date || "Start"} — {data.end_date || "End"}
-                        </p>
-                    </div>
-
-                    <div>
-                         <p className="font-bold text-gray-800 text-lg">{data.venue || "Location"}</p>
-                    </div>
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-gray-200 text-sm font-bold text-gray-500">
-                    {(data.contact1 || data.contact2) && (
-                       <div>
-                           <p>Call for details:</p>
-                           {data.contact1 && <p>{data.contact1}</p>}
-                           {data.contact2 && <p>{data.contact2}</p>}
-                       </div>
-                   )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-export default BirthdayFun;
+      {venue && (
+        <p
+          style={{
+            fontFamily: "Inter, system-ui, sans-serif",
+            fontSize: "clamp(12px, 2vw, 18px)",
+            fontWeight: 600,
+            color: "#78350F",
+            marginBottom: "clamp(4px, 0.5vw, 8px)",
+            position: "relative",
+            zIndex: 2,
+          }}
+        >
+          {venue}
+        </p>
+      )}
+      {city && (
+        <p
+          style={{
+            fontFamily: "Inter, system-ui, sans-serif",
+            fontSize: "clamp(11px, 1.8vw, 15px)",
+            color: "#92400E",
+            marginBottom: "clamp(10px, 1.5vw, 18px)",
+            position: "relative",
+            zIndex: 2,
+          }}
+        >
+          {city}
+        </p>
+      )}
+      {contactNumbers && (
+        <p
+          style={{
+            fontFamily: "Inter, system-ui, sans-serif",
+            fontSize: "clamp(10px, 1.5vw, 13px)",
+            color: "#A16207",
+            position: "relative",
+            zIndex: 2,
+          }}
+        >
+          Contact: {contactNumbers}
+        </p>
+      )}
+    </div>
+  );
+}

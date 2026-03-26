@@ -25,12 +25,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-1v1%g5ehc06gs6ou_ltlxty8p)x&s*16uo5-hko*0@kr5cg7jw'
+# ⚠️  Move to .env before deployment: SECRET_KEY=<your-random-key>
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-1v1%g5ehc06gs6ou_ltlxty8p)x&s*16uo5-hko*0@kr5cg7jw')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
 
 
 # Application definition
@@ -53,6 +54,7 @@ INSTALLED_APPS = [
     'django_crontab',
     'manager',
     'packages',
+    'reviews',
 ]
 
 MIDDLEWARE = [
@@ -92,11 +94,12 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": "utsavora_db",
-        "USER": "postgres",
-        "PASSWORD": "Akash9019",
-        "HOST": "localhost",
-        "PORT": "5432",
+        # ⚠️  Move DB credentials to .env before deployment
+        "NAME": os.getenv("DB_NAME", "new_utsavora_db"),
+        "USER": os.getenv("DB_USER", "postgres"),
+        "PASSWORD": os.getenv("DB_PASSWORD", "Akash9019"),
+        "HOST": os.getenv("DB_HOST", "localhost"),
+        "PORT": os.getenv("DB_PORT", "5432"),
     }
 }
 
@@ -151,6 +154,10 @@ STATIC_URL = 'static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# ✅ File Upload Size Limits (5MB per file, 10MB total request)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024    # 5 MB
+
 CORS_ALLOW_ALL_ORIGINS = True
 
 REST_FRAMEWORK = {
@@ -160,6 +167,21 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    'EXCEPTION_HANDLER': 'utils.exception_handler.custom_exception_handler',
+}
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'WARNING',
+    },
 }
 
 SIMPLE_JWT = {
@@ -179,12 +201,13 @@ EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
-EMAIL_HOST_USER = 'akashprajapati9019@gmail.com'
-EMAIL_HOST_PASSWORD = 'bjca duqf edwq bhzd'
+# ⚠️  Move email credentials to .env before deployment
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'akashprajapati9019@gmail.com')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', 'bjca duqf edwq bhzd')
 
-DEFAULT_FROM_EMAIL = 'Utsavora <akashprajapati9019@gmail.com>'
+DEFAULT_FROM_EMAIL = f'Utsavora <{EMAIL_HOST_USER}>'
 
-# Razorpay Configuration
+# Razorpay Configuration (from .env) ✅
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")
 

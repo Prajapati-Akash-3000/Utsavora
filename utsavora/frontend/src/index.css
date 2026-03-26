@@ -1,3 +1,120 @@
+/* ─── Google Fonts ─────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+    background: linear-gradient(135deg, #f8faff 0%, #f0f4ff 50%, #f8faff 100%);
+    background-size: 200% 200%;
+  }
+  body {
+    @apply font-sans bg-transparent text-slate-900 antialiased overflow-x-hidden;
+    min-height: 100dvh;
+  }
+
+  /* Smooth scrollbar for Webkit */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #c7d2fe; border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #818cf8; }
+
+  /* Touch-friendly minimum tap target for primary controls */
+  @media (pointer: coarse) {
+    button:not(.no-tap-target), [role="button"]:not(.no-tap-target) {
+      min-height: 44px;
+    }
+  }
+}
+
+@layer components {
+  /* ─── Premium Glass Card ─────────────────────────────────────────── */
+  .glass-card {
+    @apply bg-white/70 backdrop-blur-xl border border-white/40 shadow-[0_8px_32px_-8px_rgba(0,0,0,0.08)];
+  }
+  .glass-card-dark {
+    @apply bg-slate-900/70 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_-8px_rgba(0,0,0,0.3)];
+  }
+
+  /* ─── Gradient Text ──────────────────────────────────────────────── */
+  .gradient-text {
+    @apply bg-gradient-to-r from-indigo-600 via-purple-500 to-pink-500 bg-clip-text text-transparent;
+  }
+
+  /* ─── Section Title ──────────────────────────────────────────────── */
+  .section-badge {
+    @apply inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-bold tracking-wide;
+  }
+
+  /* ─── Premium Button Styles ──────────────────────────────────────── */
+  .btn-primary {
+    @apply bg-primary text-white font-bold px-6 py-3 rounded-xl hover:bg-primary-hover hover:shadow-lg hover:shadow-primary/25 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200;
+  }
+  .btn-outline {
+    @apply bg-transparent border-2 border-primary text-primary font-bold px-6 py-3 rounded-xl hover:bg-primary/5 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200;
+  }
+
+  /* ─── Premium Input ──────────────────────────────────────────────── */
+  .input-premium {
+    @apply w-full bg-slate-50/80 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-xl px-4 py-3.5 outline-none transition-all duration-200 placeholder:text-slate-400 font-medium;
+  }
+
+  /* ─── Floating Gradient Blob ─────────────────────────────────────── */
+  .floating-blob {
+    @apply absolute rounded-full pointer-events-none opacity-30;
+    filter: blur(80px);
+  }
+
+  /* ─── Dot Pattern Overlay ────────────────────────────────────────── */
+  .dot-pattern {
+    background-image: radial-gradient(circle at 1px 1px, rgba(99,102,241,0.07) 1px, transparent 0);
+    background-size: 24px 24px;
+  }
+}
+
+@layer utilities {
+  /* ─── Fade-in on scroll ──────────────────────────────────────────── */
+  .fade-in-up {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .fade-in-up.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ─── GPU Acceleration (use on hover cards, animated elements) ──── */
+  .gpu {
+    transform: translateZ(0);
+    will-change: transform;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .fade-in-up { opacity: 1; transform: none; }
+}
+
+/* -- Invitation Template Containment ----------------------------------------- */
+.invitation-template {
+  width: 100%;
+  height: 100%;
+}
+.invitation-template * {
+  box-sizing: border-box;
+}
+.invitation-template img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}

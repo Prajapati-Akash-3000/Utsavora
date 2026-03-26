@@ -7,7 +7,6 @@ class IsAdminUser(BasePermission):
             and request.user.role == "ADMIN"
         )
 
-
 class IsManager(BasePermission):
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated and request.user.role == 'MANAGER')
@@ -18,7 +17,8 @@ class IsActiveManager(BasePermission):
             request.user and 
             request.user.is_authenticated and 
             request.user.role == 'MANAGER' and 
-            request.user.manager_status == 'ACTIVE'
+            hasattr(request.user, 'manager_profile') and 
+            request.user.manager_profile.manager_status == 'ACTIVE'
         )
 
 class IsApprovedManager(IsActiveManager):
