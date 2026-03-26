@@ -1,11 +1,15 @@
+import React from "react";
 import { Route } from "react-router-dom";
 import ProtectedRoute from "./ProtectedRoute";
 
-import UserEventDetail from "../pages/user/UserEventDetail";
-import HireManager from "../pages/user/HireManager";
-import UserBookings from "../pages/user/UserBookings";
-import CreateEvent from "../pages/user/CreateEvent";
-import ManageMyEvents from "../pages/user/ManageMyEvents";
+// Lazy-loaded user pages
+const UserEventDetail = React.lazy(() => import("../app/user/UserEventDetail"));
+const HireManager = React.lazy(() => import("../app/user/HireManager"));
+const UserBookings = React.lazy(() => import("../app/user/UserBookings"));
+const CreateEvent = React.lazy(() => import("../app/user/CreateEvent"));
+const ManageMyEvents = React.lazy(() => import("../app/user/ManageMyEvents"));
+const UserProfile = React.lazy(() => import("../app/user/UserProfile"));
+const EditUserProfile = React.lazy(() => import("../app/user/EditUserProfile"));
 
 export default function UserRoutes() {
   return (
@@ -42,6 +46,24 @@ export default function UserRoutes() {
         element={
           <ProtectedRoute role="USER">
             <ManageMyEvents />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/user/profile"
+        element={
+          <ProtectedRoute role="USER">
+            <UserProfile />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/user/profile/edit"
+        element={
+          <ProtectedRoute role="USER">
+            <EditUserProfile />
           </ProtectedRoute>
         }
       />

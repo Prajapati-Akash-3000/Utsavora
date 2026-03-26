@@ -7,20 +7,20 @@ from .audit import log_action
 
 @api_view(['GET'])
 @permission_classes([IsAdminUser])
-def pending_managers(request):
-    managers = User.objects.filter(
+def pending_Managers(request):
+    Managers = User.objects.filter(
         role='MANAGER',
-        manager_status='PENDING'
+        manager_profile__manager_status='PENDING'
     )
 
     data = []
-    for m in managers:
+    for m in Managers:
         data.append({
             "id": m.id,
             "name": m.full_name,
             "email": m.email,
-            "company": m.company_name,
-            "certificate": m.certificate.url if m.certificate else None,
+            "company": m.manager_profile.company_name,
+            "certificate": m.manager_profile.certificate.url if m.manager_profile.certificate else None,
             "created_at": m.created_at
         })
 
@@ -28,15 +28,16 @@ def pending_managers(request):
 
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
-def approve_manager(request, manager_id):
+def approve_ManagerProfile(request, ManagerProfile_id):
     try:
-        manager = User.objects.get(id=manager_id, role='MANAGER')
-        manager.manager_status = 'ACTIVE'
-        manager.approved_by = request.user
-        manager.approved_at = timezone.now()
-        manager.rejection_reason = None
-        manager.save()
-        log_action("MANAGER_APPROVED", manager.email, request.META.get("REMOTE_ADDR"), {"admin_user": request.user.email})
+        user = User.objects.get(id=ManagerProfile_id, role='MANAGER')
+        profile = user.manager_profile
+        profile.manager_status = 'ACTIVE'
+        profile.approved_by = request.user
+        profile.approved_at = timezone.now()
+        profile.rejection_reason = None
+        profile.save()
+        log_action("MANAGER_APPROVED", user.email, request.META.get("REMOTE_ADDR"), {"admin_user": request.user.email})
 
         return Response({"message": "Manager approved"})
     except User.DoesNotExist:
@@ -44,15 +45,16 @@ def approve_manager(request, manager_id):
 
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
-def reject_manager(request, manager_id):
+def reject_ManagerProfile(request, ManagerProfile_id):
     reason = request.data.get("reason", "")
 
     try:
-        manager = User.objects.get(id=manager_id, role='MANAGER')
-        manager.manager_status = 'REJECTED'
-        manager.rejection_reason = reason
-        manager.save()
-        log_action("MANAGER_REJECTED", manager.email, request.META.get("REMOTE_ADDR"), {"admin_user": request.user.email})
+        user = User.objects.get(id=ManagerProfile_id, role='MANAGER')
+        profile = user.manager_profile
+        profile.manager_status = 'REJECTED'
+        profile.rejection_reason = reason
+        profile.save()
+        log_action("MANAGER_REJECTED", user.email, request.META.get("REMOTE_ADDR"), {"admin_user": request.user.email})
 
         return Response({"message": "Manager rejected"})
     except User.DoesNotExist:
@@ -60,12 +62,13 @@ def reject_manager(request, manager_id):
 
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
-def block_manager(request, manager_id):
+def block_ManagerProfile(request, ManagerProfile_id):
     try:
-        manager = User.objects.get(id=manager_id, role='MANAGER')
-        manager.manager_status = 'BLOCKED'
-        manager.save()
-        log_action("MANAGER_BLOCKED", manager.email, request.META.get("REMOTE_ADDR"), {"admin_user": request.user.email})
+        user = User.objects.get(id=ManagerProfile_id, role='MANAGER')
+        profile = user.manager_profile
+        profile.manager_status = 'BLOCKED'
+        profile.save()
+        log_action("MANAGER_BLOCKED", user.email, request.META.get("REMOTE_ADDR"), {"admin_user": request.user.email})
         return Response({"message": "Manager blocked"})
     except User.DoesNotExist:
         return Response({"error": "Manager not found"}, status=404)
@@ -73,12 +76,13 @@ def block_manager(request, manager_id):
 
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
-def unblock_manager(request, manager_id):
+def unblock_ManagerProfile(request, ManagerProfile_id):
     try:
-        manager = User.objects.get(id=manager_id, role='MANAGER')
-        manager.manager_status = 'ACTIVE'
-        manager.save()
-        log_action("MANAGER_UNBLOCKED", manager.email, request.META.get("REMOTE_ADDR"), {"admin_user": request.user.email})
+        user = User.objects.get(id=ManagerProfile_id, role='MANAGER')
+        profile = user.manager_profile
+        profile.manager_status = 'ACTIVE'
+        profile.save()
+        log_action("MANAGER_UNBLOCKED", user.email, request.META.get("REMOTE_ADDR"), {"admin_user": request.user.email})
         return Response({"message": "Manager unblocked"})
     except User.DoesNotExist:
         return Response({"error": "Manager not found"}, status=404)

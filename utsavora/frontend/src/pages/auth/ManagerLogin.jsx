@@ -1,107 +1,122 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
+import { handleApiError } from '../../utils/handleApiError';
+import { motion as Motion } from 'framer-motion';
+import AuthShell from "../../components/auth/AuthShell";
 
 const ManagerLogin = () => {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [shake, setShake] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError(null);
+        setShake(false);
         setLoading(true);
         try {
             const res = await api.post("/auth/login/", { email, password });
-
+            if (res.data.role !== "MANAGER") {
+                setError("This portal is for managers only. Please use the User Login.");
+                setShake(true);
+                setLoading(false);
+                return;
+            }
             const authData = {
                 access: res.data.access,
                 refresh: res.data.refresh,
-                role: "MANAGER",
-                name: res.data.name,
-                username: res.data.name
+                role: res.data.role,
+                name: res.data.full_name || res.data.user?.full_name || res.data.name || "",
+                full_name: res.data.full_name || res.data.user?.full_name || "",
+                email: res.data.email || res.data.user?.email || "",
+                username: res.data.email || res.data.user?.email || "",
+                id: res.data.user?.id || null,
             };
-
             localStorage.setItem("auth", JSON.stringify(authData));
-
-            // Explicitly set keys for api.js and other consumers
             localStorage.setItem("access", authData.access);
             localStorage.setItem("refresh", authData.refresh);
-            localStorage.setItem("user", JSON.stringify(res.data.user || { email: authData.username, role: "MANAGER" }));
-
-            // Using location.href to ensure AuthContext re-initializes from localStorage
-            window.location.href = "/manager/dashboard"; 
+            window.location.href = "/manager/dashboard";
         } catch (err) {
-             setError(err.response?.data?.error || "Login failed");
+             const message = err.response?.data?.message || err.response?.data?.detail;
+             if (message === "Your manager account is awaiting admin approval." || err.response?.data?.error === "ACCOUNT_PENDING") {
+                 setError("Your account is under verification. Admin usually reviews documents within 24 hours.");
+             } else {
+                 setError(handleApiError(err));
+             }
+             setShake(true);
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-md w-full space-y-8">
-                <div>
-                    <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-                        Manager Login
-                    </h2>
-                    <p className="mt-2 text-center text-sm text-gray-600">
-                        <Link to="/login/user" className="font-medium text-indigo-600 hover:text-indigo-500">
-                            Log in as User
-                        </Link>
-                    </p>
-                </div>
-                <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-                    <div className="rounded-md shadow-sm -space-y-px">
-                        <div>
-                            <input
-                                type="email"
-                                required
-                                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                                placeholder="Email address"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                            />
-                        </div>
-                        <div>
-                            <input
-                                type="password"
-                                required
-                                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                                placeholder="Password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="flex items-center justify-end">
-                        <div className="text-sm">
-                            <Link to="/forgot-password" className="font-medium text-indigo-600 hover:text-indigo-500">
-                                Forgot your password?
-                            </Link>
-                        </div>
-                    </div>
-
-                    {error && (
-                        <div className="text-red-500 text-sm text-center">
-                            {error}
-                        </div>
-                    )}
-
-                    <div>
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                        >
-                            {loading ? "Signing in..." : "Sign in"}
-                        </button>
-                    </div>
-                </form>
+        <AuthShell
+          title="Manager login"
+          subtitle="Manage bookings, availability, and earnings."
+          sideTitle="Grow Your Business."
+          sideSubtitle="Accept bookings, track earnings, manage your calendar — all from one professional dashboard."
+          sideFeatures={[
+            { icon: "calendar_month", label: "Manage event calendar" },
+            { icon: "account_balance_wallet", label: "Track earnings & payouts" },
+            { icon: "handshake", label: "Accept booking requests" },
+            { icon: "trending_up", label: "View analytics & insights" },
+          ]}
+          footer={
+            <div className="flex items-center justify-between text-sm font-semibold">
+              <Link to="/register" className="text-slate-600 hover:text-slate-900 transition-colors">
+                Create account <span className="text-indigo-600">→</span>
+              </Link>
+              <Link to="/login/user" className="text-slate-600 hover:text-slate-900 transition-colors">
+                User login
+              </Link>
             </div>
-        </div>
+          }
+        >
+          <Motion.form
+            className="space-y-4"
+            onSubmit={handleSubmit}
+            animate={shake ? { x: [-6, 6, -4, 4, 0] } : {}}
+            transition={{ duration: 0.15 }}
+            onAnimationComplete={() => setShake(false)}
+          >
+            {error && (
+              <Motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                {error}
+              </Motion.div>
+            )}
+
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-slate-700">Email</label>
+              <input type="email" required
+                className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 rounded-2xl px-4 py-3.5 outline-none transition-all placeholder:text-slate-400 font-semibold"
+                placeholder="manager@company.com" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-slate-700">Password</label>
+              <input type="password" required
+                className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 rounded-2xl px-4 py-3.5 outline-none transition-all placeholder:text-slate-400 font-semibold"
+                placeholder="Your password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password"
+              />
+            </div>
+
+            <div className="flex items-center justify-end">
+              <Link to="/forgot-password" className="text-sm font-bold text-slate-500 hover:text-indigo-600 transition-colors">
+                Forgot password?
+              </Link>
+            </div>
+
+            <button type="submit" disabled={loading}
+              className="w-full bg-slate-900 text-white font-black py-3.5 rounded-2xl hover:bg-slate-800 hover:shadow-lg hover:-translate-y-0.5 transition-all outline-none focus:ring-4 focus:ring-slate-900/25 disabled:opacity-50"
+            >
+              {loading ? "Signing in..." : "Sign in"}
+            </button>
+          </Motion.form>
+        </AuthShell>
     );
 };
 

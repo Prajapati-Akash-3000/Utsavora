@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Event, ServicePackage, InvitationTemplate, EventMedia, PublicEventRegistration
+from .models import Event, InvitationTemplate, EventMedia, PublicEventRegistration, EventCategory
 
 from bookings.models import Booking
 from django.utils import timezone
@@ -23,14 +23,20 @@ class InvitationTemplateSerializer(serializers.ModelSerializer):
         model = InvitationTemplate
         fields = '__all__'
 
+class EventCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EventCategory
+        fields = ['id', 'name', 'slug']
+
 class PublicEventSerializer(serializers.ModelSerializer):
     template_details = InvitationTemplateSerializer(source='template', read_only=True)
+    category_details = EventCategorySerializer(source='category', read_only=True)
     is_registration_open = serializers.SerializerMethodField()
     
     class Meta:
         model = Event
         fields = [
-            'id', 'title', 'start_date', 'end_date', 'venue', 'city', 'category',
+            'id', 'title', 'start_date', 'start_time', 'end_date', 'end_time', 'venue', 'city', 'category', 'category_details',
             'pricing_type', 'registration_fee', 'template_details', 'description', 
             'contact_numbers', 'is_registration_open'
         ]
@@ -41,15 +47,29 @@ class PublicEventSerializer(serializers.ModelSerializer):
             return False 
         return timezone.now().date() < obj.start_date
 
-
-
-class ServicePackageSerializer(serializers.ModelSerializer):
+class PublicEventDetailSerializer(serializers.ModelSerializer):
+    template_details = InvitationTemplateSerializer(source='template', read_only=True)
+    category_details = EventCategorySerializer(source='category', read_only=True)
+    is_registration_open = serializers.SerializerMethodField()
+    
     class Meta:
-        model = ServicePackage
-        fields = '__all__'
+        model = Event
+        fields = [
+            'id', 'title', 'start_date', 'start_time', 'end_date', 'end_time', 'venue', 'city', 'category', 'category_details',
+            'pricing_type', 'registration_fee', 'template_details', 'description', 
+            'contact_numbers', 'is_registration_open', 'status'
+        ]
+
+    def get_is_registration_open(self, obj):
+        if not obj.start_date:
+            return False 
+        return timezone.now().date() < obj.start_date
+
+
+
 
 class BookingSerializer(serializers.ModelSerializer):
-    service_package = ServicePackageSerializer(read_only=True)
+
 
     class Meta:
         model = Booking
@@ -57,23 +77,28 @@ class BookingSerializer(serializers.ModelSerializer):
         read_only_fields = ["status", "payment_status"]
 
 class EventSerializer(serializers.ModelSerializer):
-    manager_booking = serializers.SerializerMethodField()
+    booking = serializers.SerializerMethodField()
     # Explicitly include new fields if needed, or rely on Meta fields since we used exclude
     # exclude = ["user"] handles most, but we want to ensure template details are nested or ID is handled
     
     template_details = InvitationTemplateSerializer(source='template', read_only=True)
+    category = serializers.PrimaryKeyRelatedField(
+        queryset=EventCategory.objects.all(), required=False, allow_null=True
+    )
+    category_details = EventCategorySerializer(source='category', read_only=True)
+    invitation_template_key = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
         fields = [
             'id', 'title', 'description', 'contact_numbers', 
-            'start_date', 'end_date', 'venue', 'city', 
-            'event_date', 'status', 'is_public', 
-            'visibility', 'pricing_type', 'registration_fee',
+            'start_date', 'start_time', 'end_date', 'end_time', 'venue', 'city', 
+            'status', 'visibility', 'pricing_type', 'registration_fee',
+            'category', 'category_details',
             'template', 'template_details', 'invitation_template_key', 'invitation_data',
-            'invitation_pdf', 'created_at', 'manager_booking'
+            'invitation_pdf', 'created_at', 'booking'
         ]
-        read_only_fields = ['status', 'invitation_pdf', 'created_at', 'manager_booking', 'is_public']
+        read_only_fields = ['status', 'invitation_pdf', 'created_at', 'booking']
 
     def validate(self, data):
         # Default visibility logic
@@ -95,22 +120,19 @@ class EventSerializer(serializers.ModelSerializer):
                      raise serializers.ValidationError({"registration_fee": "Invalid fee format."})
         return data
 
-    def get_manager_booking(self, obj):
-        # Return the most recent active booking for this event
-        booking = obj.booking_set.exclude(status='REJECTED').last()
+    def get_booking(self, obj):
+        # Return the absolute newest booking for this event
+        booking = obj.booking_set.order_by('-id').first()
         if booking:
-            fields = [
-            'title', 'description', 'start_date', 'end_date', 
-            'venue', 'city', 'is_public', 'template', 
-            'invitation_template_key', 'invitation_data',
-            'created_by_email', 'status', 'created_at'
-        ]
             return {
                 "id": booking.id,
                 "status": booking.status,
                 "payment_status": booking.payment_status
             }
         return None
+
+    def get_invitation_template_key(self, obj):
+        return obj.template.template_key if obj.template else None
 
 
 class EventDetailSerializer(EventSerializer):
@@ -122,10 +144,11 @@ class EventDetailSerializer(EventSerializer):
         model = Event
         fields = [
             'id', 'title', 'description', 'contact_numbers', 'start_date', 'end_date', 
-            'venue', 'city', 'event_date', 'is_public', 'status', 'created_at', 
-            'invitation_pdf', 'template', 'template_details', 
-            'invitation_template_key', 'invitation_data', 
-            'manager_booking', 'media', 'can_upload_media', 'upload_limit', 'media_upload_deadline'
+            'venue', 'city', 'status', 'created_at', 
+            'invitation_pdf', 'template', 'template_details', 'invitation_template_key',
+            'category', 'category_details',
+            'invitation_data', 
+            'booking', 'media', 'can_upload_media', 'upload_limit', 'media_upload_deadline'
         ]
 
     def get_can_upload_media(self, obj):
@@ -144,10 +167,10 @@ class EventDetailSerializer(EventSerializer):
         # Check for accepted AND paid booking (Robust latest check)
         booking = Booking.objects.filter(event=obj).order_by("-created_at").first()
         
-        has_manager_access = (
+        has_ManagerProfile_access = (
             booking and 
             booking.status == "CONFIRMED" and 
             booking.payment_status == "PAID"
         )
-        return 20 if has_manager_access else 5
+        return 20 if has_ManagerProfile_access else 5
 

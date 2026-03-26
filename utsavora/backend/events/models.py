@@ -1,18 +1,23 @@
 from django.db import models
 from django.utils import timezone
 from datetime import timedelta
-from accounts.models import User
+
+class EventCategory(models.Model):
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(unique=True)
+
+    class Meta:
+        verbose_name_plural = "Event Categories"
+
+    def __str__(self):
+        return self.name
 
 class InvitationTemplate(models.Model):
-
-
-    name = models.CharField(max_length=100)
-    template_key = models.CharField(max_length=50, unique=True, help_text="Matches frontend component key, e.g. wedding_classic")
-    category = models.CharField(max_length=50) # Simplified as per user request
-    
-    preview_image = models.ImageField(upload_to="invitation_previews/", blank=True, null=True)
-    html_content = models.TextField(blank=True, default="") # New field
-    
+    name = models.CharField(max_length=255)
+    category = models.ForeignKey(EventCategory, on_delete=models.CASCADE, related_name='templates')
+    preview_image = models.ImageField(upload_to='templates/previews/', null=True, blank=True)
+    html_content = models.TextField(help_text="HTML template with {{ placeholders }}")
+    template_key = models.CharField(max_length=100, unique=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -20,170 +25,122 @@ class InvitationTemplate(models.Model):
         return self.name
 
 class Event(models.Model):
-    EVENT_STATUS = (
-        ("DRAFT", "Draft"),
-        ("PENDING", "Pending"),
-        ("ACTIVE", "Active"),
-        ("COMPLETED", "Completed"),
-        ("CANCELLED", "Cancelled"),
+    class Status(models.TextChoices):
+        CREATED = 'CREATED', 'Created'
+        CONFIRMED = 'CONFIRMED', 'Confirmed'
+        CANCELLED = 'CANCELLED', 'Cancelled'
+        COMPLETED = 'COMPLETED', 'Completed'
+    
+    VISIBILITY_CHOICES = (
+        ('PRIVATE', 'Private'),
+        ('PUBLIC', 'Public'),
     )
 
-    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name="events")
+    PRICING_CHOICES = (
+        ('FREE', 'Free'),
+        ('PAID', 'Paid'),
+    )
+
+    created_by = models.ForeignKey('accounts.User', on_delete=models.CASCADE, related_name="events")
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     
-    # New Fields
-    contact_numbers = models.CharField(max_length=255, blank=True)
-    start_date = models.DateField(null=True, blank=True) # Temporarily nullable for migration
+    # Core Dates & Times
+    start_date = models.DateField(null=True, blank=True)
+    start_time = models.TimeField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
+    
     venue = models.CharField(max_length=255, blank=True)
-    
     city = models.CharField(max_length=100)
-    category = models.CharField(max_length=100, default="General") # Added for public search
     
-    # Deprecating event_date but keeping for safety for now
-    event_date = models.DateField() 
+    category = models.ForeignKey(EventCategory, on_delete=models.SET_NULL, null=True, blank=True)
     
-    template = models.ForeignKey(
-        InvitationTemplate,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True
-    )
-
-    invitation_pdf = models.FileField(
-        upload_to="invitations/",
-        null=True,
-        blank=True
-    )
-
-    is_public = models.BooleanField(default=True)
-    status = models.CharField(max_length=20, choices=EVENT_STATUS, default="ACTIVE")
+    # Invitation Data
+    template = models.ForeignKey(InvitationTemplate, on_delete=models.SET_NULL, null=True, blank=True)
+    invitation_data = models.JSONField(default=dict, blank=True)
+    invitation_pdf = models.FileField(upload_to='invitations/pdfs/', null=True, blank=True)
     
-    visibility = models.CharField(max_length=20, default='PRIVATE', choices=(('PUBLIC', 'Public'), ('PRIVATE', 'Private')))
-    pricing_type = models.CharField(max_length=20, default='FREE', choices=(('FREE', 'Free'), ('PAID', 'Paid')))
+    # Public Event Settings
+    visibility = models.CharField(max_length=10, choices=VISIBILITY_CHOICES, default='PRIVATE')
+    pricing_type = models.CharField(max_length=10, choices=PRICING_CHOICES, default='FREE')
     registration_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    
+    # Extra Info
+    contact_numbers = models.CharField(max_length=255, blank=True)
+    
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.CREATED)
+    
+    media_upload_deadline = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if not self.media_upload_deadline and self.start_date:
+             # Default deadline is 48 hours after event start
+             start_datetime = timezone.make_aware(timezone.datetime.combine(self.start_date, self.start_time or timezone.datetime.min.time()))
+             self.media_upload_deadline = start_datetime + timedelta(hours=48)
+        super().save(*args, **kwargs)
+
+    def can_upload_media(self):
+        if not self.media_upload_deadline:
+            return True
+        return timezone.now() < self.media_upload_deadline
+
+    def update_event_status(self):
+        now = timezone.now().date()
+        if self.status in [self.Status.CREATED, self.Status.CONFIRMED] and self.end_date and self.end_date < now:
+            self.status = self.Status.COMPLETED
+            self.save()
 
     def __str__(self):
         return self.title
 
-    def update_event_status(self):
-        """Auto-update status based on date"""
-        if self.status == "CANCELLED":
-            return
-            
-        # If end_date is past, mark as COMPLETED
-        if self.end_date and self.end_date < timezone.now().date():
-            if self.status != "COMPLETED":
-                self.status = "COMPLETED"
-                # Avoid infinite recursion if save call signals, but explicit update_fields is safe
-                self.save(update_fields=["status"])
-        
-        # Fallback for old events without end_date (using event_date)
-        elif self.event_date and self.event_date < timezone.now().date():
-             if self.status != "COMPLETED":
-                self.status = "COMPLETED"
-                self.save(update_fields=["status"])
-    status = models.CharField(max_length=20, choices=EVENT_STATUS, default="DRAFT")
-
-    # Invitation Builder Fields
-    invitation_template_key = models.CharField(max_length=50, blank=True, null=True) # e.g. 'wedding', 'birthday'
-    invitation_data = models.JSONField(default=dict, blank=True) # Stores dynamic data for the card
-
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    visibility = models.CharField(
-        max_length=10,
-        choices=(('PRIVATE', 'Private'), ('PUBLIC', 'Public')),
-        default='PRIVATE'
-    )
-    pricing_type = models.CharField(
-        max_length=10,
-        choices=(('FREE', 'Free'), ('PAID', 'Paid')),
-        null=True,
-        blank=True
-    )
-    registration_fee = models.DecimalField(
-        max_digits=8,
-        decimal_places=2,
-        null=True,
-        blank=True
-    )
-
-    def __str__(self):
-        if self.created_by:
-            return f"{self.title} - {self.created_by.email}"
-        return f"{self.title} - No User"
-
-    def media_upload_deadline(self):
-        # Fallback to start_date or created_at if end_date doesn't exist (safety)
-        target_date = self.end_date or self.start_date or self.created_at.date()
-        return timezone.make_aware(
-            timezone.datetime.combine(
-                target_date + timedelta(days=10),
-                timezone.datetime.max.time()
-            )
-        )
-
-    def can_upload_media(self):
-        return timezone.now() <= self.media_upload_deadline()
-
-class ServicePackage(models.Model):
-    EVENT_TYPES = (
-        ('WEDDING', 'Wedding'),
-        ('BIRTHDAY', 'Birthday'),
-        ('CORPORATE', 'Corporate'),
-        ('GENERAL', 'General'),
-    )
-
-    manager = models.ForeignKey('accounts.User', on_delete=models.CASCADE, related_name='packages')
-    name = models.CharField(max_length=255)
-    price = models.DecimalField(max_digits=10, decimal_places=2)
-    description = models.TextField()
-    features = models.JSONField(default=list)
-    event_type = models.CharField(max_length=20, choices=EVENT_TYPES)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"{self.name} - {self.manager.email}"
+    class Meta:
+        indexes = [
+            models.Index(fields=['visibility', 'status', 'start_date'], name='idx_event_public_search'),
+            models.Index(fields=['created_by', '-created_at'], name='idx_event_user_dashboard'),
+            models.Index(fields=['status', 'end_date'], name='idx_event_status_autoclose'),
+        ]
 
 class EventMedia(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="media")
-    uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE)
     image = models.ImageField(upload_to="event_media/")
+    uploaded_by = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.event.title} - Media"
+        return f"Media for {self.event.title}"
 
 class PublicEventRegistration(models.Model):
-    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="registrations")
+    STATUS_CHOICES = (
+        ('PENDING', 'Pending'),
+        ('CONFIRMED', 'Confirmed'),
+        ('CANCELLED', 'Cancelled'),
+    )
+    
+    PAYMENT_STATUS = (
+        ('PENDING', 'Pending'),
+        ('PAID', 'Paid'),
+        ('FAILED', 'Failed'),
+    )
+
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='registrations')
     full_name = models.CharField(max_length=255)
     email = models.EmailField()
     mobile = models.CharField(max_length=15)
     
-    payment_status = models.CharField(
-        max_length=10,
-        choices=[("FREE", "Free"), ("PENDING", "Pending"), ("PAID", "Paid"), ("FAILED", "Failed")],
-        default="FREE"
-    )
-    status = models.CharField(
-        max_length=10,
-        choices=[("PENDING", "Pending"), ("CONFIRMED", "Confirmed"), ("CANCELLED", "Cancelled")],
-        default="PENDING"
-    )
-    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS, default='PENDING')
     
-    razorpay_order_id = models.CharField(max_length=100, blank=True, null=True)
-    razorpay_payment_id = models.CharField(max_length=100, blank=True, null=True)
-    razorpay_signature = models.CharField(max_length=255, blank=True, null=True)
+    razorpay_order_id = models.CharField(max_length=255, blank=True, null=True)
+    razorpay_payment_id = models.CharField(max_length=255, blank=True, null=True)
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('event', 'email') # Prevent duplicate registration
+        unique_together = ('event', 'email')
 
     def __str__(self):
         return f"{self.full_name} - {self.event.title}"
-

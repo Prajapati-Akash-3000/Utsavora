@@ -11,8 +11,8 @@ class ManagerPackageListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsManager]
 
     def get_queryset(self):
-        if hasattr(self.request.user, 'managerprofile'):
-            return Package.objects.filter(manager=self.request.user.managerprofile)
+        if hasattr(self.request.user, 'manager_profile'):
+            return Package.objects.filter(manager=self.request.user.manager_profile)
         return Package.objects.none()
 
 class ManagerPackageDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -21,6 +21,6 @@ class ManagerPackageDetailView(generics.RetrieveUpdateDestroyAPIView):
     lookup_field = 'id'
 
     def get_queryset(self):
-        if hasattr(self.request.user, 'managerprofile'):
-            return Package.objects.filter(manager=self.request.user.managerprofile)
+        if hasattr(self.request.user, 'manager_profile'):
+            return Package.objects.filter(manager=self.request.user.manager_profile)
         return Package.objects.none()

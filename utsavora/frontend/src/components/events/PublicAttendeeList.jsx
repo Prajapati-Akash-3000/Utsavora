@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import api from "../../services/api";
 import toast from "react-hot-toast";
+import { handleApiError } from "../../utils/handleApiError";
 
 export default function PublicAttendeeList({ eventId }) {
   const [attendees, setAttendees] = useState([]);
@@ -16,7 +17,7 @@ export default function PublicAttendeeList({ eventId }) {
           console.error(err);
           // 403 means auth failed (not owner), effectively hide or show error
           if (err.response?.status !== 403) {
-             toast.error("Failed to load attendees");
+             toast.error(handleApiError(err));
           }
       })
       .finally(() => setLoading(false));

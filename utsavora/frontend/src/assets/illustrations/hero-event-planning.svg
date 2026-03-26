@@ -1,0 +1,107 @@
+<svg width="1400" height="1000" viewBox="0 0 1400 1000" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Event planning dashboard illustration">
+  <defs>
+    <linearGradient id="bg" x1="180" y1="70" x2="1260" y2="950" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EEF2FF"/>
+      <stop offset="0.55" stop-color="#ECFDF5"/>
+      <stop offset="1" stop-color="#F5F3FF"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="340" y1="230" x2="1040" y2="770" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#111827" stop-opacity="0.92"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="420" y1="320" x2="980" y2="700" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6366F1"/>
+      <stop offset="0.55" stop-color="#10B981"/>
+      <stop offset="1" stop-color="#A855F7"/>
+    </linearGradient>
+    <filter id="softShadow" x="0" y="0" width="1400" height="1000" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#0F172A" flood-opacity="0.16"/>
+    </filter>
+    <filter id="glow" x="0" y="0" width="1400" height="1000" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feColorMatrix in="blur" type="matrix"
+        values="1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 0.35 0" result="glow"/>
+      <feBlend in="SourceGraphic" in2="glow" mode="screen"/>
+    </filter>
+  </defs>
+
+  <!-- Background card -->
+  <rect x="90" y="80" width="1220" height="840" rx="48" fill="url(#bg)" stroke="#E2E8F0"/>
+
+  <!-- Decorative blobs -->
+  <g filter="url(#glow)">
+    <circle cx="280" cy="220" r="120" fill="#6366F1" fill-opacity="0.20"/>
+    <circle cx="1120" cy="300" r="150" fill="#10B981" fill-opacity="0.18"/>
+    <circle cx="980" cy="770" r="170" fill="#A855F7" fill-opacity="0.16"/>
+  </g>
+
+  <!-- Confetti -->
+  <g opacity="0.7">
+    <rect x="210" y="170" width="12" height="34" rx="6" fill="#10B981"/>
+    <rect x="240" y="150" width="10" height="26" rx="5" fill="#6366F1"/>
+    <rect x="1180" y="210" width="12" height="34" rx="6" fill="#A855F7"/>
+    <rect x="1210" y="190" width="10" height="26" rx="5" fill="#10B981"/>
+    <rect x="1140" y="240" width="10" height="22" rx="5" fill="#6366F1"/>
+    <circle cx="320" cy="170" r="7" fill="#A855F7"/>
+    <circle cx="1080" cy="190" r="7" fill="#6366F1"/>
+    <circle cx="1160" cy="170" r="6" fill="#10B981"/>
+  </g>
+
+  <!-- Laptop -->
+  <g filter="url(#softShadow)">
+    <!-- Base -->
+    <path d="M270 785C270 760 290 740 315 740H1085C1110 740 1130 760 1130 785V805C1130 830 1110 850 1085 850H315C290 850 270 830 270 805V785Z" fill="#0B1220"/>
+    <path d="M290 790C290 775 302 763 317 763H1083C1098 763 1110 775 1110 790V802C1110 817 1098 829 1083 829H317C302 829 290 817 290 802V790Z" fill="#111827"/>
+    <rect x="560" y="810" width="280" height="12" rx="6" fill="#1F2937"/>
+
+    <!-- Screen bezel -->
+    <rect x="320" y="220" width="760" height="530" rx="36" fill="#0B1220"/>
+    <rect x="346" y="245" width="708" height="480" rx="26" fill="url(#screen)"/>
+
+    <!-- Top bar -->
+    <rect x="372" y="268" width="656" height="44" rx="16" fill="#0F172A"/>
+    <circle cx="398" cy="290" r="6" fill="#EF4444"/>
+    <circle cx="418" cy="290" r="6" fill="#F59E0B"/>
+    <circle cx="438" cy="290" r="6" fill="#10B981"/>
+    <rect x="470" y="282" width="160" height="16" rx="8" fill="#1F2937"/>
+
+    <!-- Sidebar -->
+    <rect x="372" y="328" width="168" height="377" rx="18" fill="#0F172A"/>
+    <rect x="392" y="352" width="128" height="14" rx="7" fill="#1F2937"/>
+    <rect x="392" y="382" width="110" height="14" rx="7" fill="#1F2937"/>
+    <rect x="392" y="412" width="124" height="14" rx="7" fill="#1F2937"/>
+    <rect x="392" y="462" width="138" height="34" rx="14" fill="url(#accent)"/>
+    <rect x="392" y="522" width="120" height="14" rx="7" fill="#1F2937"/>
+    <rect x="392" y="552" width="132" height="14" rx="7" fill="#1F2937"/>
+    <rect x="392" y="582" width="106" height="14" rx="7" fill="#1F2937"/>
+
+    <!-- Main content cards -->
+    <rect x="558" y="328" width="470" height="118" rx="20" fill="#0F172A"/>
+    <rect x="582" y="352" width="200" height="16" rx="8" fill="#1F2937"/>
+    <rect x="582" y="378" width="290" height="14" rx="7" fill="#1F2937"/>
+    <rect x="582" y="404" width="250" height="14" rx="7" fill="#1F2937"/>
+    <rect x="892" y="364" width="112" height="56" rx="18" fill="#111827"/>
+    <circle cx="920" cy="392" r="10" fill="#10B981"/>
+    <rect x="940" y="384" width="52" height="16" rx="8" fill="#1F2937"/>
+
+    <rect x="558" y="468" width="224" height="237" rx="20" fill="#0F172A"/>
+    <rect x="582" y="492" width="128" height="16" rx="8" fill="#1F2937"/>
+    <rect x="582" y="524" width="176" height="14" rx="7" fill="#1F2937"/>
+    <rect x="582" y="552" width="160" height="14" rx="7" fill="#1F2937"/>
+    <rect x="582" y="588" width="176" height="96" rx="18" fill="#111827"/>
+    <path d="M600 662C635 616 660 628 685 592C710 556 745 574 760 544" stroke="url(#accent)" stroke-width="6" stroke-linecap="round"/>
+
+    <rect x="804" y="468" width="224" height="237" rx="20" fill="#0F172A"/>
+    <rect x="828" y="492" width="140" height="16" rx="8" fill="#1F2937"/>
+    <rect x="828" y="526" width="176" height="46" rx="16" fill="#111827"/>
+    <circle cx="854" cy="549" r="10" fill="#6366F1"/>
+    <rect x="874" y="541" width="112" height="16" rx="8" fill="#1F2937"/>
+    <rect x="828" y="582" width="176" height="46" rx="16" fill="#111827"/>
+    <circle cx="854" cy="605" r="10" fill="#A855F7"/>
+    <rect x="874" y="597" width="96" height="16" rx="8" fill="#1F2937"/>
+    <rect x="828" y="638" width="120" height="28" rx="14" fill="url(#accent)"/>
+  </g>
+</svg>

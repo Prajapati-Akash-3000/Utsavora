@@ -1,4 +1,5 @@
 import api from "../../services/api";
+import MotionCard from "../common/MotionCard";
 
 export default function ManagerApprovalCard({ manager }) {
   const approve = async () => {
@@ -14,7 +15,7 @@ export default function ManagerApprovalCard({ manager }) {
   };
 
   return (
-    <div className="bg-white shadow-md rounded-lg p-4 flex justify-between items-center">
+    <MotionCard className="bg-white shadow-md rounded-lg p-4 flex justify-between items-center">
       <div>
         <p className="font-semibold">{manager.name}</p>
         <p className="text-sm text-gray-500">{manager.email}</p>
@@ -35,6 +36,6 @@ export default function ManagerApprovalCard({ manager }) {
           Reject
         </button>
       </div>
-    </div>
+    </MotionCard>
   );
 }

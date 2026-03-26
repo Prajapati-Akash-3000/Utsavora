@@ -1,26 +1,7 @@
-export default function Loader({ text = "Loading..." }) {
+export default function Loader() {
   return (
-    <div className="flex items-center justify-center py-10 text-gray-500">
-      <svg
-        className="animate-spin h-5 w-5 mr-3 text-indigo-600"
-        viewBox="0 0 24 24"
-      >
-        <circle
-          className="opacity-25"
-          cx="12"
-          cy="12"
-          r="10"
-          stroke="currentColor"
-          strokeWidth="4"
-          fill="none"
-        />
-        <path
-          className="opacity-75"
-          fill="currentColor"
-          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-        />
-      </svg>
-      {text}
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
     </div>
   );
 }

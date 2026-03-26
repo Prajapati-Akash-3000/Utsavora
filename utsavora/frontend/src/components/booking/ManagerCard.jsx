@@ -1,6 +1,8 @@
+import React from "react";
 import api from "../../services/api";
+import MotionCard from "../common/MotionCard";
 
-export default function ManagerCard({ manager }) {
+const ManagerCard = React.memo(function ManagerCard({ manager }) {
   const sendRequest = async () => {
     await api.post("/bookings/request/", {
       manager: manager.id,
@@ -11,7 +13,7 @@ export default function ManagerCard({ manager }) {
   };
 
   return (
-    <div className="bg-white shadow-sm rounded-lg p-4">
+    <MotionCard className="bg-white shadow-sm rounded-lg p-4">
       <h3 className="font-semibold text-lg">{manager.name}</h3>
       <p className="text-gray-600">₹{manager.price}</p>
 
@@ -21,6 +23,8 @@ export default function ManagerCard({ manager }) {
       >
         Send Request
       </button>
-    </div>
+    </MotionCard>
   );
-}
+});
+
+export default ManagerCard;

@@ -1,0 +1,50 @@
+<svg width="1400" height="420" viewBox="0 0 1400 420" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Event categories collage">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="420" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#22C55E"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="420" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A855F7"/>
+      <stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+    <linearGradient id="g3" x1="0" y1="0" x2="420" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#10B981"/>
+      <stop offset="1" stop-color="#0EA5E9"/>
+    </linearGradient>
+    <filter id="s" x="0" y="0" width="1400" height="420" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#0F172A" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#s)">
+    <rect x="40" y="40" width="420" height="340" rx="28" fill="url(#g1)"/>
+    <rect x="490" y="40" width="420" height="340" rx="28" fill="url(#g2)"/>
+    <rect x="940" y="40" width="420" height="340" rx="28" fill="url(#g3)"/>
+
+    <!-- Card 1 icons -->
+    <g opacity="0.92">
+      <circle cx="170" cy="150" r="54" fill="white" fill-opacity="0.22"/>
+      <path d="M160 164C160 145 175 130 194 130C213 130 228 145 228 164C228 183 213 198 194 198C175 198 160 183 160 164Z" fill="white" fill-opacity="0.22"/>
+      <path d="M200 132L188 158H212L200 186L226 154H204L212 132H200Z" fill="white"/>
+      <rect x="110" y="240" width="280" height="18" rx="9" fill="white" fill-opacity="0.30"/>
+      <rect x="110" y="270" width="220" height="16" rx="8" fill="white" fill-opacity="0.26"/>
+    </g>
+
+    <!-- Card 2 icons -->
+    <g opacity="0.92">
+      <circle cx="620" cy="150" r="54" fill="white" fill-opacity="0.22"/>
+      <path d="M600 172C600 152 616 136 636 136H660V156H636C627 156 620 163 620 172C620 181 627 188 636 188H690C699 188 706 181 706 172C706 163 699 156 690 156H684V136H690C710 136 726 152 726 172C726 192 710 208 690 208H636C616 208 600 192 600 172Z" fill="white"/>
+      <rect x="560" y="240" width="280" height="18" rx="9" fill="white" fill-opacity="0.30"/>
+      <rect x="560" y="270" width="240" height="16" rx="8" fill="white" fill-opacity="0.26"/>
+    </g>
+
+    <!-- Card 3 icons -->
+    <g opacity="0.92">
+      <circle cx="1070" cy="150" r="54" fill="white" fill-opacity="0.22"/>
+      <path d="M1052 182H1088C1102 182 1114 170 1114 156C1114 142 1102 130 1088 130C1079 130 1070 135 1066 143C1062 138 1055 134 1047 134C1034 134 1024 144 1024 157C1024 170 1034 180 1047 180H1052V182Z" fill="white"/>
+      <rect x="1010" y="240" width="280" height="18" rx="9" fill="white" fill-opacity="0.30"/>
+      <rect x="1010" y="270" width="210" height="16" rx="8" fill="white" fill-opacity="0.26"/>
+    </g>
+  </g>
+</svg>

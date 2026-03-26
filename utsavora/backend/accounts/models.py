@@ -11,6 +11,28 @@ class User(AbstractBaseUser, PermissionsMixin):
         ('ADMIN', 'Admin'),
     )
 
+    email = models.EmailField(unique=True)
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES)
+
+    full_name = models.CharField(max_length=255, null=True, blank=True)
+    mobile = models.CharField(max_length=15, null=True, blank=True)
+
+    is_verified = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    is_staff = models.BooleanField(default=False)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = []
+
+    objects = UserManager()
+
+    def __str__(self):
+        return f"{self.email} ({self.role})"
+
+
+class ManagerProfile(models.Model):
     MANAGER_STATUS = (
         ('PENDING', 'Pending'),
         ('ACTIVE', 'Active'),
@@ -18,27 +40,20 @@ class User(AbstractBaseUser, PermissionsMixin):
         ('REJECTED', 'Rejected'),
     )
 
-    email = models.EmailField(unique=True)
-    full_name = models.CharField(max_length=255)
-    mobile = models.CharField(max_length=15, null=True, blank=True)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='manager_profile')
+    
+    company_name = models.CharField(max_length=255)
+    certificate = models.FileField(upload_to='certificates/', null=True, blank=True)
 
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES)
+    bank_added = models.BooleanField(default=False)
 
-    is_verified = models.BooleanField(default=False)
-
-    # Manager verification
     manager_status = models.CharField(
         max_length=20,
         choices=MANAGER_STATUS,
         default='PENDING'
     )
-
-    company_name = models.CharField(max_length=255, blank=True, null=True)
-    certificate = models.FileField(upload_to='certificates/', blank=True, null=True)
-
-    # Audit fields
     approved_by = models.ForeignKey(
-        'self',
+        'AdminProfile',
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
@@ -46,31 +61,6 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
     approved_at = models.DateTimeField(null=True, blank=True)
     rejection_reason = models.TextField(null=True, blank=True)
-
-    is_active = models.BooleanField(default=True)
-    is_staff = models.BooleanField(default=False)
-    # is_approved removed in favor of manager_status='ACTIVE'
-
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['full_name']
-
-    objects = UserManager()
-
-    def __str__(self):
-        return self.email
-
-class UserProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    city = models.CharField(max_length=100)
-
-class ManagerProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    company_name = models.CharField(max_length=255)
-    city = models.CharField(max_length=100)
-    certificate = models.FileField(upload_to='certificates/', null=True, blank=True)
-    bank_added = models.BooleanField(default=False)
 
     def __str__(self):
         return self.company_name
@@ -86,6 +76,27 @@ class BankDetails(models.Model):
 
     def __str__(self):
         return f"Bank - {self.manager.company_name}"
+
+class ManagerAvailability(models.Model):
+    manager = models.ForeignKey(ManagerProfile, on_delete=models.CASCADE, related_name='availability')
+    date = models.DateField()
+    status = models.CharField(max_length=20, default='BLOCKED')
+    booking = models.ForeignKey('bookings.Booking', on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('manager', 'date')
+
+    def __str__(self):
+        return f"{self.manager.company_name} - {self.date}"
+
+class AdminProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='admin_profile')
+    employee_id = models.CharField(max_length=50, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"Admin: {self.user.email}"
 
 class EmailOTP(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -116,6 +127,7 @@ class AuditLog(models.Model):
     )
 
     user_email = models.EmailField(null=True, blank=True)
+    admin = models.ForeignKey('AdminProfile', on_delete=models.SET_NULL, null=True, blank=True)
     action = models.CharField(max_length=50, choices=ACTIONS)
     ip_address = models.GenericIPAddressField()
     timestamp = models.DateTimeField(auto_now_add=True)
@@ -123,38 +135,3 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"{self.action} - {self.user_email}"
-
-class ManagerAvailability(models.Model):
-    STATUS_CHOICES = (
-        ("BOOKED", "Booked (Event)"),
-        ("BLOCKED", "Blocked (Manual)"),
-    )
-
-    manager = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        limit_choices_to={'role': 'MANAGER'},
-        related_name='account_blocked_dates'
-    )
-    date = models.DateField()
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="BLOCKED")
-    
-    # Booking FK to link this date to a specific booking (optional, null for manual blocks)
-    booking = models.ForeignKey(
-        'bookings.Booking',
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name='availability_slots'
-    )
-    
-    reason = models.CharField(max_length=255, blank=True)
-
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ('manager', 'date')
-        ordering = ['date']
-
-    def __str__(self):
-        return f"{self.manager.email} - {self.date} ({self.status})"

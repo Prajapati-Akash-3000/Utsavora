@@ -7,20 +7,20 @@ Your event "{event.title}" has been created.
 📅 Dates: {event.start_date} → {event.end_date}
 📍 Venue: {event.venue}, {event.city}
 
-You can now hire a manager and customize your event.
+You can now hire a ManagerProfile and customize your event.
 
 — Utsavora Team
 """
     )
 
 
-def manager_accepted_email(event):
+def ManagerProfile_accepted_email(event):
     return (
-        "✅ Manager Accepted Your Event",
+        "✅ ManagerProfile Accepted Your Event",
         f"""
 Good news!
 
-Your manager has accepted the request for:
+Your ManagerProfile has accepted the request for:
 📌 {event.title}
 
 You can now proceed with payment and uploads.

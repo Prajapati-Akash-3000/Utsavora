@@ -4,7 +4,7 @@ from bookings.models import Booking
 from accounts.models import ManagerAvailability
 
 class Command(BaseCommand):
-    help = "Auto-releases manager dates for completed events and marks booking as COMPLETED"
+    help = "Auto-releases ManagerProfile dates for completed events and marks booking as COMPLETED"
 
     def handle(self, *args, **kwargs):
         today = now().date()

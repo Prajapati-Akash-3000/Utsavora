@@ -1,17 +1,20 @@
 import { BrowserRouter } from "react-router-dom";
 import AppRoutes from "./routes/AppRoutes";
-import Navbar from "./components/layout/Navbar";
 import { AuthProvider } from "./context/AuthContext";
+import ScrollToTop from "./components/layout/ScrollToTop";
+import GlobalBackground from "./components/layout/GlobalBackground";
+import ErrorBoundary from "./components/common/ErrorBoundary";
 
 export default function App() {
   return (
-    <AuthProvider>
-        <BrowserRouter>
-            <Navbar />
-            <div className="bg-gray-50 min-h-screen">
-                <AppRoutes />
-            </div>
-        </BrowserRouter>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+          <BrowserRouter>
+              <ScrollToTop />
+              <GlobalBackground />
+              <AppRoutes />
+          </BrowserRouter>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

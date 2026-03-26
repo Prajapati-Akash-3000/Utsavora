@@ -13,12 +13,12 @@ def auto_release_payments():
     payments = Payment.objects.filter(
         status='ESCROW',
         booking__status='CONFIRMED', # Paying confirmed bookings
-        booking__event__event_date__lte=release_date_threshold
+        booking__event__start_date__lte=release_date_threshold
     )
     
     count = 0
     for payment in payments:
-        print(f"Releasing Payment {payment.id} for Booking {payment.booking.id} (Event: {payment.booking.event.event_date})")
+        print(f"Releasing Payment {payment.id} for Booking {payment.booking.id} (Event: {payment.booking.event.title})")
         
         # 1. Update Payment
         payment.status = 'RELEASED'

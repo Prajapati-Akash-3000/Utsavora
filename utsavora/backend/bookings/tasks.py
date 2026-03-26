@@ -1,5 +1,6 @@
 from django.utils import timezone
-from .models import Booking, ManagerAvailability
+from .models import Booking
+from accounts.models import ManagerAvailability
 
 def expire_unpaid_bookings():
     expired = Booking.objects.filter(

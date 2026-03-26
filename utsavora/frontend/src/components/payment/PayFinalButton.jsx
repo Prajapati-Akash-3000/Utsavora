@@ -1,13 +1,24 @@
 import api from "../../services/api";
+import { useState } from "react";
+import Button from "../ui/Button";
+import toast from "react-hot-toast";
+import { handleApiError } from "../../utils/handleApiError";
+import { motion as Motion } from "framer-motion";
 
 export default function PayFinalButton({ bookingId }) {
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+
   const handleFinalPay = async () => {
     try {
+      setLoading(true);
       await api.post(`/payments/escrow/final/${bookingId}/`);
-      alert("Final payment successful");
-      window.location.reload();
+      setSuccess(true);
+      toast.success("Final payment successful!");
+      setTimeout(() => window.location.reload(), 1500);
     } catch (err) {
-      alert("Final payment failed");
+      setLoading(false);
+      toast.error(handleApiError(err));
     }
   };
 
@@ -17,12 +28,23 @@ export default function PayFinalButton({ bookingId }) {
         Event Completed – Final Settlement Pending
       </p>
 
-      <button
+      <Button
         onClick={handleFinalPay}
-        className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg shadow transition"
+        loading={loading}
+        disabled={success}
+        className={`px-6 py-3 shadow ${success ? 'bg-green-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}`}
       >
-        Pay Remaining 50%
-      </button>
+        {success ? (
+            <Motion.span 
+              initial={{ scale: 0 }} 
+              animate={{ scale: 1 }} 
+              transition={{ duration: 0.4 }}
+              className="inline-flex items-center gap-2"
+            >
+              ✅ Settlement Complete
+            </Motion.span>
+        ) : "Pay Remaining 50%"}
+      </Button>
     </div>
   );
 }

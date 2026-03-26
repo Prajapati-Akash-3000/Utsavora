@@ -3,6 +3,7 @@ import axios from "axios";
 
 const api = axios.create({
   baseURL: "http://127.0.0.1:8000/api/",
+  timeout: 15000, // 15 seconds timeout
 });
 
 // attach JWT automatically
@@ -19,6 +20,11 @@ api.interceptors.response.use(
   (res) => res,
   async (err) => {
     const original = err.config;
+
+    // Do not intercept 401s for login endpoints to prevent page refresh bugs
+    if (original.url?.includes('/auth/login/') || original.url?.includes('/auth/token/')) {
+        return Promise.reject(err);
+    }
 
     if (err.response?.status === 401 && !original._retry) {
       original._retry = true;
@@ -48,7 +54,13 @@ api.interceptors.response.use(
         // Clean up tokens if refresh fails
         localStorage.removeItem("access");
         localStorage.removeItem("refresh");
-        window.location.href = "/login"; // Optional: redirect to login
+        
+        // Only redirect to login if we aren't already on a login or register page
+        const pathname = window.location.pathname;
+        if (!pathname.includes("/login") && !pathname.includes("/register")) {
+            window.location.href = "/login/user";
+        }
+        
         return Promise.reject(refreshErr);
       }
     }

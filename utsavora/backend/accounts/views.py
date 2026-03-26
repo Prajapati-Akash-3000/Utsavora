@@ -5,7 +5,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.generics import ListAPIView
-from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from .serializers import (
     UserRegisterSerializer, 
     ManagerRegisterSerializer, 
@@ -13,94 +13,106 @@ from .serializers import (
     CustomTokenObtainPairSerializer,
     UserSerializer,
     ManagerUpdateSerializer,
-    ManagerAvailabilitySerializer
+    ManagerAvailabilitySerializer,
+    UserProfileSerializer,
+    UserProfileUpdateSerializer,
 )
-from .models import ManagerProfile, User, EmailOTP, UserProfile, BankDetails, ManagerAvailability
+from .models import User, EmailOTP, ManagerProfile, BankDetails, ManagerAvailability
 from .utils import send_otp
 from .rate_limit import rate_limit
 from .audit import log_action
+from .validators import validate_registration_data, validate_email, validate_otp_value
 from .permissions import IsApprovedManager, IsActiveManager, IsManager
 import random
 import traceback
-from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.db import IntegrityError
+from django.db.models import Count, Sum, Q
 
-@api_view(["POST"])
-def user_login(request):
-    # Deprecated/Custom login logic if needed, but LoginView is primary
-    pass 
+from events.models import Event
+from bookings.models import Booking
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register(request):
     try:
-        data = request.data
         ip = request.META.get("REMOTE_ADDR")
         key = f"register_otp_{ip}"
-
         if not rate_limit(key, limit=5, timeout=600):
             return Response({"error": "Too many OTP requests. Try later."}, status=429)
 
-        email = data.get('email')
-        password = data.get('password')
-        full_name = data.get('full_name')
-        role = data.get('role', 'USER')
-        phone = data.get('mobile')
-        company_name = data.get('company_name')
-        city = data.get('city', '')
-
-        if not all([email, password, full_name, role]):
-            return Response({"error": "All fields are required"}, status=400)
+        data = request.data.copy() if request.data else {}
+        files = request.FILES if request.FILES else {}
         
-        role = role.upper()
-        if role not in ["USER", "MANAGER"]:
-            return Response({"error": "Invalid role"}, status=400)
+        validation_errors, cleaned = validate_registration_data(data, files)
+        if validation_errors:
+            return Response({"errors": validation_errors}, status=400)
+
+        email = cleaned["email"]
+        password = cleaned["password"]
+        full_name = cleaned["full_name"]
+        role = cleaned["role"]
+        mobile = cleaned["mobile"]
+        company_name = cleaned["company_name"]
+        certificate = cleaned["certificate"]
+
 
         existing_user = User.objects.filter(email=email).first()
-        
-        if existing_user:
-            if existing_user.is_active:
-               return Response({"error": "Email already exists"}, status=400)
-            else:
-               existing_user.set_password(password)
-               existing_user.full_name = full_name
-               existing_user.role = role
-               existing_user.mobile = phone
-               existing_user.save()
-               user = existing_user
-        else:
-            user = User.objects.create_user(
-                email=email,
-                password=password,
-                full_name=full_name,
-                role=role,
-                mobile=phone,
-                is_active=False,
-                is_verified=False
-            )
-        
-        if role == "MANAGER":
-            # Update User specific fields
-            user.company_name = company_name or ""
-            if request.FILES.get('certificate'):
-                user.certificate = request.FILES.get('certificate')
-            user.save()
+        if existing_user and existing_user.is_active:
+            return Response({"errors": {"email": ["An account with this email already exists."]}}, status=400)
 
-            if not ManagerProfile.objects.filter(user=user).exists():
-                 ManagerProfile.objects.create(
-                     user=user, 
-                     company_name=company_name or "", 
-                     city=city, 
-                     certificate=request.FILES.get('certificate')
-                 )
+        if role == "MANAGER":
+            if existing_user:
+                existing_user.set_password(password)
+                existing_user.role = role
+                existing_user.save()
+                user = existing_user
+                
+                ManagerProfile.objects.update_or_create(
+                    user=user,
+                    defaults={
+                        "company_name": company_name or "",
+                        "certificate": certificate
+                    }
+                )
+            else:
+                user = User.objects.create_user(
+                    email=email,
+                    password=password,
+                    role=role,
+                    is_active=False,
+                    is_verified=False,
+                    full_name=full_name,
+                    mobile=mobile
+                )
+                ManagerProfile.objects.create(
+                    user=user,
+                    company_name=company_name or "",
+                    certificate=certificate,
+                    manager_status='PENDING'
+                )
         else:
-            # Explicitly set active status for Users since they don't need approval
-            user.manager_status = 'ACTIVE'
-            user.save() 
+            if existing_user:
+                existing_user.set_password(password)
+                existing_user.role = role
+                existing_user.save()
+                user = existing_user
+            else:
+                user = User.objects.create_user(
+                    email=email,
+                    password=password,
+                    role=role,
+                    is_active=False,
+                    is_verified=False,
+                    full_name=full_name,
+                    mobile=mobile
+                )
             
-            if not UserProfile.objects.filter(user=user).exists():
-                UserProfile.objects.create(user=user, city=city)
+            # User profile data is now directly on the User model
+            user.full_name = full_name
+            user.mobile = mobile
+
+            user.save()
 
         otp = str(random.randint(100000, 999999))
         EmailOTP.objects.filter(user=user).delete()
@@ -117,104 +129,58 @@ def register(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def verify_otp(request):
-    email = request.data.get('email')
-    otp_input = request.data.get('otp')
+    data = request.data or {}
+    email_raw = data.get("email")
+    otp_input = data.get("otp")
 
-    if not email or not otp_input:
-        return Response({"error": "Email and OTP are required"}, status=400)
-    
+    errors = {}
+    for msg in validate_email(email_raw):
+        errors.setdefault("email", []).append(msg)
+    for msg in validate_otp_value(otp_input):
+        errors.setdefault("otp", []).append(msg)
+    if errors:
+        return Response({"errors": errors}, status=400)
+
+    email = str(email_raw).strip().lower()
     otp_record = EmailOTP.objects.filter(
-        user__email=email, 
+        user__email=email,
         otp=str(otp_input).strip(),
         is_used=False
     ).last()
 
     if not otp_record:
-        return Response({"error": "Invalid OTP"}, status=400)
+        return Response({"errors": {"otp": ["Invalid OTP."]}}, status=400)
 
     if otp_record.expires_at < timezone.now():
-        return Response({"error": "OTP expired"}, status=400)
+        return Response({"errors": {"otp": ["OTP has expired. Request a new one."]}}, status=400)
 
     user = otp_record.user
     user.is_verified = True
     user.is_active = True
-    
-    if user.role == 'MANAGER':
-        user.manager_status = 'PENDING'
-        user.save()
-        otp_record.is_used = True
-        otp_record.save()
-        log_action("OTP_VERIFIED", email, request.META.get("REMOTE_ADDR"))
-        return Response({"message": "Document verification pending", "role": "MANAGER", "login": False}, status=200)
-
-    # User flow: Auto-active? Users don't use manager_status.
-    # user.is_approved = True # Removed
     user.save()
+    
     otp_record.is_used = True
     otp_record.save()
     log_action("OTP_VERIFIED", email, request.META.get("REMOTE_ADDR"))
 
-    return Response({"message": "Registration successful. Please login.", "role": "USER"}, status=200)
+    if user.role == "MANAGER":
+        return Response({
+            "success": True,
+            "role": "MANAGER",
+            "status": "PENDING_APPROVAL",
+            "message": "Registration successful. Your documents are under verification."
+        }, status=200)
 
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def resend_otp(request):
-    ip = request.META.get("REMOTE_ADDR")
-    key = f"resend_otp_{ip}"
-    if not rate_limit(key, limit=3, timeout=600):
-        return Response({"error": "OTP resend limit reached"}, status=429)
-
-    email = request.data.get("email")
-    if not email:
-        return Response({"error": "Email is required"}, status=400)
-
-    try:
-        user = User.objects.get(email=email)
-        EmailOTP.objects.filter(user=user).delete()
-        otp = str(random.randint(100000, 999999))
-        EmailOTP.objects.create(user=user, otp=otp)
-        send_otp(email, otp)
-        log_action("OTP_SENT", email, ip, {"type": "resend"})
-        return Response({"message": "OTP resent successfully"})
-    except User.DoesNotExist:
-        return Response({"error": "User not found"}, status=404)
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def forgot_password(request):
-    from datetime import timedelta
-    email = request.data.get("email")
-    try:
-        user = User.objects.get(email=email)
-    except User.DoesNotExist:
-        return Response({"error": "Email not registered"}, status=400)
-
-    otp = str(random.randint(100000, 999999))
-    EmailOTP.objects.create(user=user, otp=otp, expires_at=timezone.now() + timedelta(minutes=5))
-    send_otp(email, otp)
-    return Response({"message": "OTP sent to email"})
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def reset_password(request):
-    email = request.data.get("email")
-    otp = request.data.get("otp")
-    new_password = request.data.get("password")
-    try:
-        user = User.objects.get(email=email)
-        otp_record = EmailOTP.objects.filter(user=user, otp=otp).last()
-        if not otp_record: return Response({"error": "Invalid OTP"}, status=400)
-        if otp_record.expires_at < timezone.now(): return Response({"error": "OTP expired"}, status=400)
-        user.set_password(new_password)
-        user.save()
-        otp_record.delete()
-        return Response({"message": "Password reset successful"})
-    except Exception as e:
-        return Response({"error": "Invalid OTP or User"}, status=400)
+    return Response({
+        "success": True,
+        "role": "USER",
+        "message": "Registration successful. Please login."
+    }, status=200)
 
 class LoginView(TokenObtainPairView):
     permission_classes = [AllowAny]
     serializer_class = CustomTokenObtainPairSerializer
+    
     def post(self, request, *args, **kwargs):
         ip = request.META.get("REMOTE_ADDR")
         key = f"login_{ip}"
@@ -229,212 +195,398 @@ class LoginView(TokenObtainPairView):
             return Response({"detail": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
 
         user = serializer.user
-        # USER login
-        if user.role == "USER":
-            if not user.is_verified:
-                return Response({"error": "Account not verified"}, status=403)
-            if not user.is_active:
-                return Response({"error": "Account is disabled"}, status=403)
+        if not user.is_verified:
+            return Response({"error": "Account not verified"}, status=403)
+        if not user.is_active:
+            return Response({"error": "Account is disabled"}, status=403)
 
-        # MANAGER login
-        elif user.role == "MANAGER":
-            if not user.is_verified:
-                return Response({"error": "Email not verified"}, status=403)
-
-            if user.manager_status != "ACTIVE":
-                return Response({"error": "Manager approval pending or rejected"}, status=403)
-
-        # ADMIN login
-        elif user.role == "ADMIN":
-            pass  # allow
+        if user.role == "MANAGER":
+            if not hasattr(user, 'manager_profile') or user.manager_profile.manager_status != "ACTIVE":
+                return Response({
+                    "error": "ACCOUNT_PENDING", 
+                    "message": "Your manager account is awaiting admin approval."
+                }, status=403)
 
         log_action("LOGIN_SUCCESS", user.email, ip)
         return Response(serializer.validated_data, status=status.HTTP_200_OK)
 
-class ManagerSearchView(ListAPIView):
+class ManagerProfileSearchView(ListAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = ManagerProfileSerializer
+    
     def get_queryset(self):
-        city = self.request.query_params.get('city')
-        queryset = ManagerProfile.objects.filter(status='APPROVED')
-        if city: queryset = queryset.filter(city__icontains=city)
-        return queryset
-
-from .permissions import IsApprovedManager, IsActiveManager
-
-# ... [Keep existing code] ...
+        return ManagerProfile.objects.filter(manager_status='ACTIVE')
 
 class ManagerProfileView(APIView):
     permission_classes = [IsAuthenticated, IsApprovedManager]
+    
     def get(self, request):
-        serializer = ManagerUpdateSerializer(request.user.managerprofile)
+        serializer = ManagerUpdateSerializer(request.user.manager_profile)
         return Response(serializer.data)
+        
     def put(self, request):
-        serializer = ManagerUpdateSerializer(request.user.managerprofile, data=request.data, partial=True)
+        serializer = ManagerUpdateSerializer(request.user.manager_profile, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-@api_view(["POST"])
-@permission_classes([IsActiveManager])
-def add_or_update_bank_details(request):
-    try:
-        manager_profile = ManagerProfile.objects.get(user=request.user)
-    except ManagerProfile.DoesNotExist:
-         return Response({"error": "Manager profile not found"}, status=404)
-
-    BankDetails.objects.update_or_create(
-        manager=manager_profile,
-        defaults={
-            "account_holder_name": request.data.get("account_holder_name"),
-            "account_number": request.data.get("account_number"),
-            "ifsc_code": request.data.get("ifsc_code"),
-            "bank_name": request.data.get("bank_name"),
-        }
-    )
-
-    # Mark bank as added
-    manager_profile.bank_added = True
-    manager_profile.save()
-
-    return Response({
-        "message": "Bank details saved successfully",
-        "bank_added": True
-    })
-
 @api_view(['GET'])
-@permission_classes([IsManager])
-def get_manager_availability(request):
-    # Fetch all availability records (both Manual Blocks & Booked Events)
-    availabilities = ManagerAvailability.objects.filter(manager=request.user)
+@permission_classes([IsAuthenticated])
+def manager_availability(request):
+    if not hasattr(request.user, 'manager_profile'):
+        return Response({"error": "Only Managers allowed"})
+
+    manager = request.user.manager_profile
+    availabilities = ManagerAvailability.objects.filter(manager=manager).select_related('booking__event', 'booking__user', 'booking__package')
     data = []
     
     for av in availabilities:
         title = "Unavailable"
         event_name = None
         event_id = None
+        user_name = None
+        user_email = None
+        user_mobile = None
+        package_name = None
+        venue = None
+        city = None
+        price = None
+        start_date = None
+        end_date = None
+        start_time = None
+        end_time = None
         
         if av.status == "BOOKED":
             title = "Booked Event"
             if av.booking and av.booking.event:
-                event_name = av.booking.event.title
-                event_id = av.booking.event.id
+                ev = av.booking.event
+                event_name = ev.title
+                event_id = ev.id
+                venue = ev.venue
+                city = ev.city
+                start_date = ev.start_date
+                end_date = ev.end_date
+                start_time = ev.start_time.strftime('%H:%M:%S') if ev.start_time else None
+                end_time = ev.end_time.strftime('%H:%M:%S') if ev.end_time else None
+                
+                user_obj = av.booking.user
+                if user_obj:
+                    user_name = user_obj.full_name or "Unknown"
+                    user_email = user_obj.email
+                    user_mobile = user_obj.mobile or "No Mobile"
+                else:
+                    user_name = "Unknown"
+                
+                if av.booking.package:
+                    package_name = av.booking.package.title
+                else:
+                    package_name = "Custom"
+                
+                price = av.booking.total_amount
+
         elif av.status == "BLOCKED":
             title = "Blocked Manually"
         
         data.append({
             "id": av.id,
             "date": av.date,
-            "status": av.status, # 'BLOCKED' or 'BOOKED'
+            "status": av.status,
             "title": title,
             "event_name": event_name,
-            "event_id": event_id
+            "event_id": event_id,
+            "user_name": user_name,
+            "user_email": user_email,
+            "user_mobile": user_mobile,
+            "package_name": package_name,
+            "venue": venue,
+            "city": city,
+            "price": price,
+            "start_date": start_date,
+            "end_date": end_date,
+            "start_time": start_time,
+            "end_time": end_time,
         })
 
     return Response(data)
 
-@api_view(['GET'])
-@permission_classes([IsManager])
-def manager_earnings(request):
-    # Need to import Booking here or at top. Using lazy import inside if not at top. 
-    # But better to check if Booking is imported. 
-    # Accounts views usually don't import Booking to avoid circular deps if possible, 
-    # but ManagerAvailability has FK to Booking, so Booking model is loaded.
-    from bookings.models import Booking
-    
-    completed_bookings = Booking.objects.filter(
-        manager=request.user,
-        status="COMPLETED"
-    )
-    
-    pending_bookings = Booking.objects.filter(
-        manager=request.user,
-        status="CONFIRMED"
-    )
-
-    # Calculate total
-    total_released = sum(b.package.price for b in completed_bookings if b.package) 
-    total_pending = sum(b.package.price for b in pending_bookings if b.package)
-    
-    # Combine for total stats if needed or just send both
-    
-    return Response({
-        "total_earned": total_released, # Earned usually means realized/released
-        "pending_clearance": total_pending,
-        "events_completed": completed_bookings.count(),
-        "events_pending": pending_bookings.count(),
-        "recent": [
-            {
-              "event": b.event.title,
-              "amount": b.package.price if b.package else 0,
-              "date": b.event.end_date or b.event.event_date,
-              "status": "COMPLETED"
-            }
-            for b in completed_bookings[:5]
-        ]
-    })
-
-from django.views.decorators.csrf import csrf_exempt
-
-from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
-
 class BlockDateView(APIView):
-    permission_classes = [IsAuthenticated]
-    authentication_classes = [JWTAuthentication] # Explicitly use JWT to bypass CSRF (Session)
+    permission_classes = [IsAuthenticated, IsManager]
     
     def post(self, request):
-        if request.user.role != "MANAGER":
-            return Response(
-                {"detail": "Only managers can block dates"},
-                status=403
-            )
-
         date = request.data.get("date")
         if not date:
-            return Response(
-                {"detail": "Date is required"},
-                status=400
-            )
+            return Response({"detail": "Date is required"}, status=400)
 
         try:
             ManagerAvailability.objects.create(
-                manager=request.user,
+                manager=request.user.manager_profile,
                 date=date,
-                status="BLOCKED" # Default manual block
+                status="BLOCKED"
             )
-            return Response(
-                {"message": "Date blocked successfully"},
-                status=201
-            )
-
+            return Response({"message": "Date blocked successfully"}, status=201)
         except IntegrityError:
-            return Response(
-                {"detail": "Date already blocked"},
-                status=400
-            )
+            return Response({"detail": "Date already blocked"}, status=400)
 
 @api_view(['DELETE'])
 @permission_classes([IsManager])
 def remove_blocked_date(request):
-    # This replaces the old ID-based deletion with safer date-based unblocking
     date = request.data.get("date")
-    
     if not date:
         return Response({"detail": "Date is required"}, status=400)
 
-    # 🔥 CRITICAL SAFETY CHECK: Only delete MANUAL blocks
     deleted_count, _ = ManagerAvailability.objects.filter(
-        manager=request.user,
+        manager=request.user.manager_profile,
         date=date,
-        status="BLOCKED"  # Only manual blocks!
+        status="BLOCKED"
     ).delete()
 
     if deleted_count == 0:
-        return Response(
-            {"detail": "No manual block found for this date. Booked dates cannot be removed."},
-            status=404
-        )
+        return Response({"detail": "No manual block found for this date."}, status=404)
         
     return Response({"message": "Date unblocked successfully"})
+
+from payments.models import Payment
+
+class ManagerEarningsView(APIView):
+    permission_classes = [IsAuthenticated, IsApprovedManager]
+
+    def get(self, request):
+        if not hasattr(request.user, 'manager_profile'):
+            return Response({"error": "Only Managers allowed"}, status=403)
+            
+        manager = request.user.manager_profile
+        payments = Payment.objects.filter(booking__manager=manager, status='SUCCESS')
+        
+        total_earnings = sum(p.manager_amount for p in payments)
+        
+        recent_transactions = [
+            {
+                "id": p.id,
+                "amount": float(p.manager_amount),
+                "date": p.updated_at.isoformat(),
+                "event": p.booking.event.title if p.booking and p.booking.event else "Unknown"
+            }
+            for p in payments.order_by('-updated_at')[:10]
+        ]
+        
+        return Response({
+            "total_earnings": float(total_earnings),
+            "recent_transactions": recent_transactions
+        })
+
+
+class UserProfileView(APIView):
+    """
+    User profile (view + edit).
+    - View: account details + event analytics (completed/ongoing/category-wise).
+    - Edit: full_name and mobile.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def _build_profile_response(self, request):
+        user = request.user
+
+        if user.role != "USER":
+            return Response({"detail": "User profile is only available for USER accounts."}, status=403)
+
+        today = timezone.now().date()
+        events_qs = Event.objects.filter(created_by=user)
+
+        # "Ongoing" = ACTIVE and not ended by date yet (or date missing).
+        ongoing_events_qs = events_qs.filter(
+            status="ACTIVE"
+        ).filter(Q(end_date__isnull=True) | Q(end_date__gte=today))
+
+        response = {
+            "user": UserProfileSerializer(user, context={"request": request}).data,
+            "stats": {
+                "events": {
+                    "total": events_qs.count(),
+                    "completed": events_qs.filter(status="COMPLETED").count(),
+                    "ongoing": ongoing_events_qs.count(),
+                    "cancelled": events_qs.filter(status="CANCELLED").count(),
+                },
+                "categories": [],
+                "bookings": {},
+            },
+        }
+
+        categories = events_qs.values(
+            "category_id",
+            "category__name",
+            "category__slug",
+        ).annotate(
+            total=Count("id"),
+            completed=Count("id", filter=Q(status="COMPLETED")),
+            ongoing=Count("id", filter=Q(status="ACTIVE")),
+            cancelled=Count("id", filter=Q(status="CANCELLED")),
+        ).order_by("-total")
+
+        response["stats"]["categories"] = [
+            {
+                "category_id": row["category_id"],
+                "name": row["category__name"] or "Uncategorized",
+                "slug": row["category__slug"],
+                "total": row["total"],
+                "completed": row["completed"],
+                "ongoing": row["ongoing"],
+                "cancelled": row["cancelled"],
+            }
+            for row in categories
+        ]
+
+        bookings_qs = Booking.objects.filter(event__in=events_qs)
+        payment_statuses = ["UNPAID", "PARTIALLY_PAID", "FULLY_PAID", "REFUNDED"]
+
+        response["stats"]["bookings"] = {
+            "total": bookings_qs.count(),
+            "by_status": {
+                status: bookings_qs.filter(status=status).count()
+                for status in ["PENDING", "ACCEPTED", "REJECTED", "CONFIRMED", "CANCELLED", "COMPLETED"]
+            },
+            "by_payment_status": {
+                ps: bookings_qs.filter(payment_status=ps).count()
+                for ps in payment_statuses
+            },
+            "total_paid_amount": float(bookings_qs.aggregate(total=Sum("paid_amount"))["total"] or 0),
+        }
+
+        return response
+
+    def get(self, request):
+        resp = self._build_profile_response(request)
+        if isinstance(resp, Response):
+            return resp
+        return Response(resp)
+
+    def put(self, request):
+        user = request.user
+
+        if user.role != "USER":
+            return Response({"detail": "User profile is only available for USER accounts."}, status=403)
+
+        serializer = UserProfileUpdateSerializer(user, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer.save()
+        resp = self._build_profile_response(request)
+        return Response(resp)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def forgot_password(request):
+    """
+    Step 1: User requests password reset.
+    Find user, generate OTP, save to EmailOTP, and email.
+    """
+    data = request.data or {}
+    email_raw = data.get("email")
+
+    if not email_raw:
+        return Response({"error": "Email is required."}, status=400)
+        
+    email = str(email_raw).strip().lower()
+
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        # Avoid user enum: return success message anyway
+        return Response({"error": "If this email exists, an OTP has been sent."}, status=404)
+
+    # 1. Generate new OTP
+    otp = str(random.randint(100000, 999999))
+
+    # 2. Invalidate previous unexpired OTPs
+    EmailOTP.objects.filter(user=user).delete()
+
+    # 3. Create fresh OTP
+    EmailOTP.objects.create(user=user, otp=otp)
+
+    # 4. Send email
+    try:
+        send_otp(email, otp)
+    except Exception as e:
+        print("Failed to send OTP:", e)
+        return Response({"error": "Could not send OTP email. Please try again later."}, status=500)
+
+    # 5. Log activity
+    ip = request.META.get("REMOTE_ADDR")
+    log_action("OTP_SENT", email, ip)
+
+    return Response({"message": "OTP sent to email"})
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_reset_otp(request):
+    """
+    Step 2: User provides OTP to prove ownership.
+    """
+    data = request.data or {}
+    email_raw = data.get("email")
+    otp_input = data.get("otp")
+
+    if not email_raw or not otp_input:
+        return Response({"error": "Email and OTP are required."}, status=400)
+
+    email = str(email_raw).strip().lower()
+    otp_input = str(otp_input).strip()
+
+    otp_record = EmailOTP.objects.filter(
+        user__email=email,
+        otp=otp_input,
+        is_used=False
+    ).last()
+
+    if not otp_record:
+        return Response({"error": "Invalid or expired OTP."}, status=400)
+
+    if otp_record.is_expired():
+        return Response({"error": "OTP has expired. Request a new one."}, status=400)
+
+    # Valid OTP found! Keep it unused for step 3.
+    return Response({"message": "OTP verified successfully."})
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def reset_password(request):
+    """
+    Step 3: User resets password by providing Email, OTP, and new Password.
+    """
+    data = request.data or {}
+    email_raw = data.get("email")
+    otp_input = data.get("otp")
+    new_password = data.get("password")
+
+    if not email_raw or not otp_input or not new_password:
+        return Response({"error": "Email, OTP, and new password are required."}, status=400)
+
+    if len(new_password) < 8:
+        return Response({"error": "Password must be at least 8 characters."}, status=400)
+
+    email = str(email_raw).strip().lower()
+    otp_input = str(otp_input).strip()
+
+    otp_record = EmailOTP.objects.filter(
+        user__email=email,
+        otp=otp_input,
+        is_used=False
+    ).last()
+
+    if not otp_record or otp_record.is_expired():
+        return Response({"error": "Invalid or expired OTP. Please restart password reset."}, status=400)
+
+    user = otp_record.user
+    user.set_password(new_password)
+    user.save()
+
+    # Mark OTP as used to prevent replay
+    otp_record.is_used = True
+    otp_record.save()
+    
+    ip = request.META.get("REMOTE_ADDR")
+    log_action("PASSWORD_RESET", email, ip)
+
+    return Response({"message": "Password reset successful. You can now login."})
