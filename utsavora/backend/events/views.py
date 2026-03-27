@@ -9,9 +9,6 @@ from .serializers import EventSerializer, InvitationTemplateSerializer, EventDet
 from packages.models import Package
 from packages.serializers import PackageSerializer
 from django.core.files.base import ContentFile
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.utils import ImageReader
 import io
 import requests
 from django.shortcuts import get_object_or_404
@@ -20,43 +17,6 @@ from django.http import HttpResponse
 from django.template import Template, Context
 from bookings.models import Booking
 from .serializers_public import PublicEventRegistrationSerializer, PublicAttendeeSerializer
-
-def generate_invitation_pdf(event):
-    if not event.template:
-        return
-        
-    buffer = io.BytesIO()
-    p = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
-    
-    # Draw Background
-    if event.template.preview_image:
-        try:
-            # ReportLab requires a file path or URL-like object
-            bg_path = event.template.preview_image.path
-            p.drawImage(bg_path, 0, 0, width=width, height=height)
-        except Exception as e:
-            print(f"Error loading background: {e}")
-
-    # Draw Text (Basic implementation - can be enhanced with proper layout key logic)
-    p.setFillColorRGB(0, 0, 0)
-    p.setFont("Helvetica-Bold", 30)
-    p.drawCentredString(width / 2, height - 150, event.title)
-    
-    p.setFont("Helvetica", 18)
-    date_str = f"{event.start_date} - {event.end_date}" if event.end_date else str(event.start_date)
-    p.drawCentredString(width / 2, height - 200, date_str)
-    
-    p.drawCentredString(width / 2, height - 230, f"{event.venue}, {event.city}")
-    
-    p.setFont("Helvetica-Oblique", 14)
-    p.drawCentredString(width / 2, height - 300, event.description)
-
-    p.showPage()
-    p.save()
-    
-    pdf_name = f"invitation_{event.id}.pdf"
-    event.invitation_pdf.save(pdf_name, ContentFile(buffer.getvalue()), save=True)
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -608,40 +568,6 @@ def render_invitation(request, event_id):
 
     rendered = Template(html).render(context)
     return HttpResponse(rendered)
-
-try:
-    from weasyprint import HTML
-except (OSError, ImportError, Exception) as e:
-        weasyprint = None
-        pass
-
-@api_view(["GET"])
-@permission_classes([AllowAny])
-def download_invitation_pdf(request, event_id):
-    if not HTML:
-        return HttpResponse("PDF generation is not available on this server (Missing GTK libraries).", status=501)
-
-    event = get_object_or_404(Event, id=event_id)
-    if not event.template:
-        return HttpResponse("No template selected", status=400)
-    
-    html = event.template.html_content
-    context = Context({
-        "event_name": event.title,
-        "start_date": event.start_date,
-        "end_date": event.end_date,
-        "location": event.venue,
-        "city": event.city,
-        "description": event.description,
-        "contact_numbers": event.contact_numbers,
-    })
-    rendered_html = Template(html).render(context)
-    
-    pdf_file = HTML(string=rendered_html).write_pdf()
-    
-    response = HttpResponse(pdf_file, content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="invitation_{event.id}.pdf"'
-    return response
 
 import bleach
 

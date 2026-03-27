@@ -33,5 +33,4 @@ urlpatterns = [
     path('my-events/', views.my_events, name='my_events'), # my-events is static string, so safe before or after int:id? Wait. 'my-events/' is NOT an int. safe. But better to keep static routes top.
     
     path('<int:event_id>/invitation/', views.render_invitation, name='render_invitation'),
-    path('<int:event_id>/invitation/pdf/', views.download_invitation_pdf, name='download_invitation_pdf'),
 ]
