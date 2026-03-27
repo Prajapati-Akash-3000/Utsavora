@@ -17,3 +17,4 @@ sqlparse==0.5.5
 asgiref==3.11.0
 tzdata==2025.3
 urllib3==2.6.3
+bleach==6.1.0
